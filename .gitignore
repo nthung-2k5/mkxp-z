@@ -13,6 +13,8 @@ xxd+
 /build
 /builddir
 
+.pre-commit-config.yaml
+
 # VS Code
 /.vscode
 *.code-workspace
