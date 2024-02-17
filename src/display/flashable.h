@@ -22,69 +22,63 @@
 #ifndef FLASHABLE_H
 #define FLASHABLE_H
 
-#include "etc.h"
 #include "etc-internal.h"
+#include "etc.h"
 
 class Flashable
 {
-public:
-	Flashable()
-	    : flashColor(0, 0, 0, 0),
-	      flashing(false),
-	      emptyFlashFlag(false)
-	{}
+  public:
+    Flashable(): flashColor(0, 0, 0, 0), flashing(false), emptyFlashFlag(false) {}
 
-	virtual ~Flashable() {}
+    virtual ~Flashable() {}
 
-	void flash(const Vec4 *color, int duration)
-	{
-		if (duration < 1)
-			return;
+    void flash(const Vec4* color, int duration)
+    {
+        if (duration < 1) return;
 
-		flashing = true;
-		this->duration = duration;
-		counter = 0;
+        flashing = true;
+        this->duration = duration;
+        counter = 0;
 
-		if (!color)
-		{
-			emptyFlashFlag = true;
-			return;
-		}
+        if (!color)
+        {
+            emptyFlashFlag = true;
+            return;
+        }
 
-		flashColor = *color;
-		flashAlpha = flashColor.w;
-	}
+        flashColor = *color;
+        flashAlpha = flashColor.w;
+    }
 
-	virtual void update()
-	{
-		if (!flashing)
-			return;
+    virtual void update()
+    {
+        if (!flashing) return;
 
-		if (++counter > duration)
-		{
-			/* Flash finished. Cleanup */
-			flashColor = Vec4(0, 0, 0, 0);
-			flashing = false;
-			emptyFlashFlag = false;
-			return;
-		}
+        if (++counter > duration)
+        {
+            /* Flash finished. Cleanup */
+            flashColor = Vec4(0, 0, 0, 0);
+            flashing = false;
+            emptyFlashFlag = false;
+            return;
+        }
 
-		/* No need to update flash color on empty flash */
-		if (emptyFlashFlag)
-			return;
+        /* No need to update flash color on empty flash */
+        if (emptyFlashFlag) return;
 
-		float prog = (float) counter / duration;
-		flashColor.w = flashAlpha * (1 - prog);
-	}
+        float prog = (float)counter / duration;
+        flashColor.w = flashAlpha * (1 - prog);
+    }
 
-protected:
-	Vec4 flashColor;
-	bool flashing;
-	bool emptyFlashFlag;
-private:
-	float flashAlpha;
-	int duration;
-	int counter;
+  protected:
+    Vec4 flashColor;
+    bool flashing;
+    bool emptyFlashFlag;
+
+  private:
+    float flashAlpha;
+    int duration;
+    int counter;
 };
 
 #endif // FLASHABLE_H

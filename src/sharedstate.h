@@ -53,79 +53,79 @@ struct SharedMidiState;
 
 struct SharedState
 {
-	void *bindingData() const;
-	void setBindingData(void *data);
+    void* bindingData() const;
+    void setBindingData(void* data);
 
-	SDL_Window *sdlWindow() const;
+    SDL_Window* sdlWindow() const;
 
-	Scene *screen() const;
-	void setScreen(Scene &screen);
+    Scene* screen() const;
+    void setScreen(Scene& screen);
 
-	FileSystem &fileSystem() const;
+    FileSystem& fileSystem() const;
 
-	EventThread &eThread() const;
-	RGSSThreadData &rtData() const;
-	Config &config() const;
+    EventThread& eThread() const;
+    RGSSThreadData& rtData() const;
+    Config& config() const;
 
-	Graphics &graphics() const;
-	Input &input() const;
-	Audio &audio() const;
+    Graphics& graphics() const;
+    Input& input() const;
+    Audio& audio() const;
 
-	GLState &_glState() const;
+    GLState& _glState() const;
 
-	ShaderSet &shaders() const;
+    ShaderSet& shaders() const;
 
-	TexPool &texPool() const;
+    TexPool& texPool() const;
 
-	SharedFontState &fontState() const;
-	Font &defaultFont() const;
-	SharedMidiState &midiState() const;
+    SharedFontState& fontState() const;
+    Font& defaultFont() const;
+    SharedMidiState& midiState() const;
 
-	sigslot::signal<> prepareDraw;
+    sigslot::signal<> prepareDraw;
 
-	unsigned int genTimeStamp();
-    
+    unsigned int genTimeStamp();
+
     // Returns time since SharedState was constructed in microseconds
     double runTime();
 
-	/* Returns global quad IBO, and ensures it has indices
-	 * for at least minSize quads */
-	void ensureQuadIBO(size_t minSize);
-	GlobalIBO &globalIBO();
+    /* Returns global quad IBO, and ensures it has indices
+     * for at least minSize quads */
+    void ensureQuadIBO(size_t minSize);
+    GlobalIBO& globalIBO();
 
-	/* Global general purpose texture */
-	void bindTex();
-	void ensureTexSize(int minW, int minH, Vec2i &currentSizeOut);
+    /* Global general purpose texture */
+    void bindTex();
+    void ensureTexSize(int minW, int minH, Vec2i& currentSizeOut);
 
-	TEXFBO &gpTexFBO(int minW, int minH);
+    TEXFBO& gpTexFBO(int minW, int minH);
 
-	Quad &gpQuad() const;
+    Quad& gpQuad() const;
 
-	/* Basically just a simple "TexPool"
-	 * replacement for Tilemap atlas use */
-	void requestAtlasTex(int w, int h, TEXFBO &out);
-	void releaseAtlasTex(TEXFBO &tex);
+    /* Basically just a simple "TexPool"
+     * replacement for Tilemap atlas use */
+    void requestAtlasTex(int w, int h, TEXFBO& out);
+    void releaseAtlasTex(TEXFBO& tex);
 
-	/* Checks EventThread's shutdown request flag and if set,
-	 * requests the binding to terminate. In this case, this
-	 * function will most likely not return */
-	void checkShutdown();
+    /* Checks EventThread's shutdown request flag and if set,
+     * requests the binding to terminate. In this case, this
+     * function will most likely not return */
+    void checkShutdown();
 
-	void checkReset();
+    void checkReset();
 
-	static SharedState *instance;
-	static int rgssVersion;
+    static SharedState* instance;
+    static int rgssVersion;
 
-	/* This function will throw an Exception instance
-	 * on initialization error */
-	static void initInstance(RGSSThreadData *threadData);
-	static void finiInstance();
+    /* This function will throw an Exception instance
+     * on initialization error */
+    static void initInstance(RGSSThreadData* threadData);
+    static void finiInstance();
 
-private:
-	SharedState(RGSSThreadData *threadData);
-	~SharedState();
+  private:
+    SharedState(RGSSThreadData* threadData);
+    ~SharedState();
 
-	SharedStatePrivate *p;
+    SharedStatePrivate* p;
 };
 
 #endif // SHAREDSTATE_H

@@ -28,18 +28,19 @@
 #include <string>
 #include <vector>
 
-struct Config {
+struct Config
+{
     // Used for sending the JSON data to Ruby as System::CONFIG
     json5pp::value raw;
-    
+
     int rgssVersion;
-    
+
     bool debugMode;
     bool winConsole;
     bool preferMetalRenderer;
     bool displayFPS;
     bool printFPS;
-    
+
     bool winResizable;
     bool fullscreen;
     bool fixedAspectRatio;
@@ -53,120 +54,129 @@ struct Config {
     double framebufferScalingFactor;
     double atlasScalingFactor;
     bool vsync;
-    
+
     int defScreenW;
     int defScreenH;
     std::string windowTitle;
-    
+
     int fixedFramerate;
     bool frameSkip;
     bool syncToRefreshrate;
-    
+
     std::vector<std::string> solidFonts;
-    
+
     bool subImageFix;
     bool enableBlitting;
     int maxTextureSize;
-    
-    struct {
+
+    struct
+    {
         bool active;
         bool lastMileScaling;
     } integerScaling;
-    
+
     std::string gameFolder;
     bool manualFolderSelect;
-    
+
     bool anyAltToggleFS;
     bool enableReset;
     bool enableSettings;
     bool allowSymlinks;
     bool pathCache;
-    
+
     std::string dataPathOrg;
     std::string dataPathApp;
-    
+
     std::string iconPath;
     std::string execName;
     std::string titleLanguage;
-    
-    struct {
+
+    struct
+    {
         std::string soundFont;
         bool chorus;
         bool reverb;
     } midi;
-    
-    struct {
+
+    struct
+    {
         int sourceCount;
     } SE;
-    
-    struct {
+
+    struct
+    {
         int trackCount;
     } BGM;
-    
+
     bool useScriptNames;
-    
+
     std::string customScript;
-    
+
     std::vector<std::string> launchArgs;
     std::vector<std::string> preloadScripts;
     std::vector<std::string> rtps;
     std::vector<std::string> patches;
-    
+
     std::vector<std::string> fontSubs;
-    
+
     std::vector<std::string> rubyLoadpaths;
 
     /* Editor flags */
-    struct {
+    struct
+    {
         bool debug;
         bool battleTest;
     } editor;
-    
+
     /* Game INI contents */
-    struct {
+    struct
+    {
         std::string scripts;
         std::string title;
     } game;
-    
+
     // MJIT Options
-    struct {
+    struct
+    {
         bool enabled;
         int verboseLevel;
         int maxCache;
         int minCalls;
     } jit;
-    
+
     // YJIT Options
-    struct {
+    struct
+    {
         bool enabled;
     } yjit;
 
     bool dumpAtlas;
 
     // Keybinding action name mappings
-    struct {
+    struct
+    {
         std::string a;
         std::string b;
         std::string c;
-        
+
         std::string x;
         std::string y;
         std::string z;
-        
+
         std::string l;
         std::string r;
     } kbActionNames;
-    
+
     std::string userConfPath;
-    
+
     /* Internal */
     std::string customDataPath;
-    
+
     Config();
-    
-    bool fontIsSolid(const char *fontName) const;
-    
-    void read(int argc, char *argv[]);
+
+    bool fontIsSolid(const char* fontName) const;
+
+    void read(int argc, char* argv[]);
     void readGameINI();
 };
 

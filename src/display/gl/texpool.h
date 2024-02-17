@@ -28,17 +28,17 @@ struct TexPoolPrivate;
 
 class TexPool
 {
-public:
-	TexPool(uint32_t maxMemSize = 20000000 /* 20 MB */);
-	~TexPool();
+  public:
+    TexPool(uint32_t maxMemSize = 20000000 /* 20 MB */);
+    ~TexPool();
 
-	TEXFBO request(int width, int height);
-	void release(TEXFBO &obj);
+    TEXFBO request(int width, int height);
+    void release(TEXFBO& obj);
 
-	void disable();
+    void disable();
 
-private:
-	TexPoolPrivate *p;
+  private:
+    TexPoolPrivate* p;
 };
 
 #endif // TEXPOOL_H

@@ -31,34 +31,35 @@ struct Tone;
 
 struct PlanePrivate;
 
-class Plane : public ViewportElement, public Disposable
+class Plane: public ViewportElement, public Disposable
 {
-public:
-	Plane(Viewport *viewport = 0);
-	~Plane();
+  public:
+    Plane(Viewport* viewport = 0);
+    ~Plane();
 
-	DECL_ATTR( Bitmap,    Bitmap* )
-	DECL_ATTR( OX,        int     )
-	DECL_ATTR( OY,        int     )
-	DECL_ATTR( ZoomX,     float   )
-	DECL_ATTR( ZoomY,     float   )
-	DECL_ATTR( Opacity,   int     )
-	DECL_ATTR( BlendType, int     )
-	DECL_ATTR( Color,     Color&  )
-	DECL_ATTR( Tone,      Tone&   )
+    DECL_ATTR(Bitmap, Bitmap*)
+    DECL_ATTR(OX, int)
+    DECL_ATTR(OY, int)
+    DECL_ATTR(ZoomX, float)
+    DECL_ATTR(ZoomY, float)
+    DECL_ATTR(Opacity, int)
+    DECL_ATTR(BlendType, int)
+    DECL_ATTR(Color, Color&)
+    DECL_ATTR(Tone, Tone&)
 
-	void initDynAttribs();
+    void initDynAttribs();
 
-private:
-	PlanePrivate *p;
+  private:
+    PlanePrivate* p;
 
-	void draw();
-	void onGeometryChange(const Scene::Geometry &);
+    void draw();
+    void onGeometryChange(const Scene::Geometry&);
 
-	void releaseResources();
-	const char *klassName() const { return "plane"; }
+    void releaseResources();
 
-	ABOUT_TO_ACCESS_DISP
+    const char* klassName() const { return "plane"; }
+
+    ABOUT_TO_ACCESS_DISP
 };
 
 #endif // PLANE_H

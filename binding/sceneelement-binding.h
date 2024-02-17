@@ -22,70 +22,69 @@
 #ifndef SCENEELEMENTBINDING_H
 #define SCENEELEMENTBINDING_H
 
-#include "scene.h"
 #include "binding-util.h"
 #include "graphics.h"
+#include "scene.h"
 
-template<class C>
+template <class C>
 RB_METHOD(sceneElementGetZ)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	SceneElement *se = getPrivateData<C>(self);
+    SceneElement* se = getPrivateData<C>(self);
 
-	int value = 0;
-	GUARD_EXC( value = se->getZ(); );
+    int value = 0;
+    GUARD_EXC(value = se->getZ(););
 
-	return rb_fix_new(value);
+    return rb_fix_new(value);
 }
 
-template<class C>
+template <class C>
 RB_METHOD(sceneElementSetZ)
 {
-	SceneElement *se = getPrivateData<C>(self);
+    SceneElement* se = getPrivateData<C>(self);
 
-	int z;
-	rb_get_args(argc, argv, "i", &z RB_ARG_END);
+    int z;
+    rb_get_args(argc, argv, "i", &z RB_ARG_END);
 
-	GFX_GUARD_EXC( se->setZ(z); );
+    GFX_GUARD_EXC(se->setZ(z););
 
-	return rb_fix_new(z);
+    return rb_fix_new(z);
 }
 
-template<class C>
+template <class C>
 RB_METHOD(sceneElementGetVisible)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	SceneElement *se = getPrivateData<C>(self);
+    SceneElement* se = getPrivateData<C>(self);
 
-	bool value = false;
-	GUARD_EXC( value = se->getVisible(); );
+    bool value = false;
+    GUARD_EXC(value = se->getVisible(););
 
-	return rb_bool_new(value);
+    return rb_bool_new(value);
 }
 
-template<class C>
+template <class C>
 RB_METHOD(sceneElementSetVisible)
 {
-	SceneElement *se = getPrivateData<C>(self);
+    SceneElement* se = getPrivateData<C>(self);
 
-	bool visible;
-	rb_get_args(argc, argv, "b", &visible RB_ARG_END);
+    bool visible;
+    rb_get_args(argc, argv, "b", &visible RB_ARG_END);
 
-	GFX_GUARD_EXC( se->setVisible(visible); );
+    GFX_GUARD_EXC(se->setVisible(visible););
 
     return rb_bool_new(visible);
 }
 
-template<class C>
-void
-sceneElementBindingInit(VALUE klass)
+template <class C>
+void sceneElementBindingInit(VALUE klass)
 {
-	_rb_define_method(klass, "z",        sceneElementGetZ<C>);
-	_rb_define_method(klass, "z=",       sceneElementSetZ<C>);
-	_rb_define_method(klass, "visible",  sceneElementGetVisible<C>);
-	_rb_define_method(klass, "visible=", sceneElementSetVisible<C>);
+    _rb_define_method(klass, "z", sceneElementGetZ<C>);
+    _rb_define_method(klass, "z=", sceneElementSetZ<C>);
+    _rb_define_method(klass, "visible", sceneElementGetVisible<C>);
+    _rb_define_method(klass, "visible=", sceneElementSetVisible<C>);
 }
 
 #endif // SCENEELEMENTBINDING_H

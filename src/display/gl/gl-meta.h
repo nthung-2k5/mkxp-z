@@ -31,48 +31,46 @@
 namespace GLMeta
 {
 
-/* EXT_unpack_subimage */
-void subRectImageUpload(GLint srcW, GLint srcX, GLint srcY,
-                        GLint dstX, GLint dstY, GLsizei dstW, GLsizei dstH,
-                        SDL_Surface *src, GLenum format);
-void subRectImageEnd();
+    /* EXT_unpack_subimage */
+    void subRectImageUpload(GLint srcW, GLint srcX, GLint srcY, GLint dstX, GLint dstY, GLsizei dstW, GLsizei dstH,
+                            SDL_Surface* src, GLenum format);
+    void subRectImageEnd();
 
-/* ARB_vertex_array_object */
-struct VAO
-{
-	/* Set manually, then call vaoInit() */
-	const VertexAttribute *attr;
-	size_t attrCount;
-	GLsizei vertSize;
-	VBO::ID vbo;
-	IBO::ID ibo;
+    /* ARB_vertex_array_object */
+    struct VAO
+    {
+        /* Set manually, then call vaoInit() */
+        const VertexAttribute* attr;
+        size_t attrCount;
+        GLsizei vertSize;
+        VBO::ID vbo;
+        IBO::ID ibo;
 
-	/* Don't touch */
-	GLuint nativeVAO;
-};
+        /* Don't touch */
+        GLuint nativeVAO;
+    };
 
-template<class VertexType>
-inline void vaoFillInVertexData(VAO &vao)
-{
-	vao.attr      = VertexTraits<VertexType>::attr;
-	vao.attrCount = VertexTraits<VertexType>::attrCount;
-	vao.vertSize  = sizeof(VertexType);
-}
+    template <class VertexType>
+    inline void vaoFillInVertexData(VAO& vao)
+    {
+        vao.attr = VertexTraits<VertexType>::attr;
+        vao.attrCount = VertexTraits<VertexType>::attrCount;
+        vao.vertSize = sizeof(VertexType);
+    }
 
-void vaoInit(VAO &vao, bool keepBound = false);
-void vaoFini(VAO &vao);
-void vaoBind(VAO &vao);
-void vaoUnbind(VAO &vao);
+    void vaoInit(VAO& vao, bool keepBound = false);
+    void vaoFini(VAO& vao);
+    void vaoBind(VAO& vao);
+    void vaoUnbind(VAO& vao);
 
-/* EXT_framebuffer_blit */
-void blitBegin(TEXFBO &target, bool preferHires = false);
-void blitBeginScreen(const Vec2i &size);
-void blitSource(TEXFBO &source);
-void blitRectangle(const IntRect &src, const Vec2i &dstPos);
-void blitRectangle(const IntRect &src, const IntRect &dst,
-                   bool smooth = false);
-void blitEnd();
+    /* EXT_framebuffer_blit */
+    void blitBegin(TEXFBO& target, bool preferHires = false);
+    void blitBeginScreen(const Vec2i& size);
+    void blitSource(TEXFBO& source);
+    void blitRectangle(const IntRect& src, const Vec2i& dstPos);
+    void blitRectangle(const IntRect& src, const IntRect& dst, bool smooth = false);
+    void blitEnd();
 
-}
+} // namespace GLMeta
 
 #endif // GLMETA_H

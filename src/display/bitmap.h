@@ -34,103 +34,90 @@ struct TEXFBO;
 struct SDL_Surface;
 
 struct BitmapPrivate;
+
 // FIXME make this class use proper RGSS classes again
-class Bitmap : public Disposable
+class Bitmap: public Disposable
 {
-public:
-	Bitmap(const char *filename);
-	Bitmap(int width, int height, bool isHires = false);
-	Bitmap(void *pixeldata, int width, int height);
-	Bitmap(TEXFBO &other);
-	Bitmap(SDL_Surface *imgSurf, SDL_Surface *imgSurfHires);
+  public:
+    Bitmap(const char* filename);
+    Bitmap(int width, int height, bool isHires = false);
+    Bitmap(void* pixeldata, int width, int height);
+    Bitmap(TEXFBO& other);
+    Bitmap(SDL_Surface* imgSurf, SDL_Surface* imgSurfHires);
 
-	/* Clone constructor */
-    
+    /* Clone constructor */
+
     // frame is -2 for "any and all", -1 for "current", anything else for a specific frame
-	Bitmap(const Bitmap &other, int frame = -2);
-	~Bitmap();
+    Bitmap(const Bitmap& other, int frame = -2);
+    ~Bitmap();
 
-	void initFromSurface(SDL_Surface *imgSurf, Bitmap *hiresBitmap, bool freeSurface);
+    void initFromSurface(SDL_Surface* imgSurf, Bitmap* hiresBitmap, bool freeSurface);
 
-	int width()  const;
-	int height() const;
-	bool hasHires() const;
-	DECL_ATTR(Hires, Bitmap*)
-	void setLores(Bitmap *lores);
-	bool isMega() const;
+    int width() const;
+    int height() const;
+    bool hasHires() const;
+    DECL_ATTR(Hires, Bitmap*)
+    void setLores(Bitmap* lores);
+    bool isMega() const;
     bool isAnimated() const;
 
-	IntRect rect() const;
+    IntRect rect() const;
 
-	void blt(int x, int y,
-	         const Bitmap &source, const IntRect &rect,
-	         int opacity = 255);
+    void blt(int x, int y, const Bitmap& source, const IntRect& rect, int opacity = 255);
 
-	void stretchBlt(IntRect destRect,
-	                const Bitmap &source, IntRect sourceRect,
-	                int opacity = 255);
+    void stretchBlt(IntRect destRect, const Bitmap& source, IntRect sourceRect, int opacity = 255);
 
-	void fillRect(int x, int y,
-	              int width, int height,
-	              const Vec4 &color);
-	void fillRect(const IntRect &rect, const Vec4 &color);
+    void fillRect(int x, int y, int width, int height, const Vec4& color);
+    void fillRect(const IntRect& rect, const Vec4& color);
 
-	void gradientFillRect(int x, int y,
-	                      int width, int height,
-	                      const Vec4 &color1, const Vec4 &color2,
-	                      bool vertical = false);
-	void gradientFillRect(const IntRect &rect,
-	                      const Vec4 &color1, const Vec4 &color2,
-	                      bool vertical = false);
+    void gradientFillRect(int x, int y, int width, int height, const Vec4& color1, const Vec4& color2,
+                          bool vertical = false);
+    void gradientFillRect(const IntRect& rect, const Vec4& color1, const Vec4& color2, bool vertical = false);
 
-	void clearRect(int x, int y,
-	               int width, int height);
-	void clearRect(const IntRect &rect);
+    void clearRect(int x, int y, int width, int height);
+    void clearRect(const IntRect& rect);
 
-	void blur();
-	void radialBlur(int angle, int divisions);
+    void blur();
+    void radialBlur(int angle, int divisions);
 
-	void clear();
+    void clear();
 
-	Color getPixel(int x, int y) const;
-	void setPixel(int x, int y, const Color &color);
-    
-    bool getRaw(void *output, int output_size);
-    void replaceRaw(void *pixel_data, int size);
-    void saveToFile(const char *filename);
+    Color getPixel(int x, int y) const;
+    void setPixel(int x, int y, const Color& color);
 
-	void hueChange(int hue);
+    bool getRaw(void* output, int output_size);
+    void replaceRaw(void* pixel_data, int size);
+    void saveToFile(const char* filename);
 
-	enum TextAlign
-	{
-		Left = 0,
-		Center = 1,
-		Right = 2
-	};
+    void hueChange(int hue);
 
-	void drawText(int x, int y,
-	              int width, int height,
-	              const char *str, int align = Left);
+    enum TextAlign
+    {
+        Left = 0,
+        Center = 1,
+        Right = 2
+    };
 
-	void drawText(const IntRect &rect,
-	              const char *str, int align = Left);
+    void drawText(int x, int y, int width, int height, const char* str, int align = Left);
 
-	IntRect textSize(const char *str);
+    void drawText(const IntRect& rect, const char* str, int align = Left);
 
-	DECL_ATTR(Font, Font&)
+    IntRect textSize(const char* str);
 
-	/* Sets initial reference without copying by value,
-	 * use at construction */
-	void setInitFont(Font *value);
+    DECL_ATTR(Font, Font&)
 
-	/* <internal> */
-	TEXFBO &getGLTypes() const;
-    SDL_Surface *surface() const;
-	SDL_Surface *megaSurface() const;
-	void ensureNonMega() const;
+    /* Sets initial reference without copying by value,
+     * use at construction */
+    void setInitFont(Font* value);
+
+    /* <internal> */
+    TEXFBO& getGLTypes() const;
+    SDL_Surface* surface() const;
+    SDL_Surface* megaSurface() const;
+    void ensureNonMega() const;
     void ensureNonAnimated() const;
     void ensureAnimated() const;
-    
+
     // Animation functions
     void stop();
     void play();
@@ -139,43 +126,44 @@ public:
     void gotoAndPlay(int frame);
     int numFrames() const;
     int currentFrameI() const;
-    
-    int addFrame(Bitmap &source, int position = -1);
+
+    int addFrame(Bitmap& source, int position = -1);
     void removeFrame(int position = -1);
-    
+
     void nextFrame();
     void previousFrame();
-    std::vector<TEXFBO> &getFrames() const;
-    
+    std::vector<TEXFBO>& getFrames() const;
+
     void setAnimationFPS(float FPS);
     float getAnimationFPS() const;
-    
+
     void setLooping(bool loop);
     bool getLooping() const;
 
     void ensureNotPlaying() const;
     // ----------
-    
-	/* Binds the backing texture and sets the correct
-	 * texture size uniform in shader */
-	void bindTex(ShaderBase &shader);
 
-	/* Adds 'rect' to tainted area */
-	void taintArea(const IntRect &rect);
+    /* Binds the backing texture and sets the correct
+     * texture size uniform in shader */
+    void bindTex(ShaderBase& shader);
 
-	sigslot::signal<> modified;
+    /* Adds 'rect' to tainted area */
+    void taintArea(const IntRect& rect);
 
-	static int maxSize();
-    
+    sigslot::signal<> modified;
+
+    static int maxSize();
+
     bool invalid() const;
 
     void assumeRubyGC();
 
-private:
-	void releaseResources();
-	const char *klassName() const { return "bitmap"; }
+  private:
+    void releaseResources();
 
-	BitmapPrivate *p;
+    const char* klassName() const { return "bitmap"; }
+
+    BitmapPrivate* p;
 };
 
 #endif // BITMAP_H

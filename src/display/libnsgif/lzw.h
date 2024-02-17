@@ -16,26 +16,23 @@
  * Decoder for GIF LZW data.
  */
 
-
 /** Maximum LZW code size in bits */
 #define LZW_CODE_MAX 12
-
 
 /* Declare lzw internal context structure */
 struct lzw_ctx;
 
-
 /** LZW decoding response codes */
-typedef enum lzw_result {
-	LZW_OK,        /**< Success */
-	LZW_OK_EOD,    /**< Success; reached zero-length sub-block */
-	LZW_NO_MEM,    /**< Error: Out of memory */
-	LZW_NO_DATA,   /**< Error: Out of data */
-	LZW_EOI_CODE,  /**< Error: End of Information code */
-	LZW_BAD_ICODE, /**< Error: Bad initial LZW code */
-	LZW_BAD_CODE,  /**< Error: Bad LZW code */
+typedef enum lzw_result
+{
+    LZW_OK,        /**< Success */
+    LZW_OK_EOD,    /**< Success; reached zero-length sub-block */
+    LZW_NO_MEM,    /**< Error: Out of memory */
+    LZW_NO_DATA,   /**< Error: Out of data */
+    LZW_EOI_CODE,  /**< Error: End of Information code */
+    LZW_BAD_ICODE, /**< Error: Bad initial LZW code */
+    LZW_BAD_CODE,  /**< Error: Bad LZW code */
 } lzw_result;
-
 
 /**
  * Create an LZW decompression context.
@@ -44,16 +41,14 @@ typedef enum lzw_result {
  *                  free with lzw_context_destroy().
  * \return LZW_OK on success, or appropriate error code otherwise.
  */
-lzw_result lzw_context_create(
-		struct lzw_ctx **ctx);
+lzw_result lzw_context_create(struct lzw_ctx** ctx);
 
 /**
  * Destroy an LZW decompression context.
  *
  * \param[in] ctx  The LZW decompression context to destroy.
  */
-void lzw_context_destroy(
-		struct lzw_ctx *ctx);
+void lzw_context_destroy(struct lzw_ctx* ctx);
 
 /**
  * Initialise an LZW decompression context for decoding.
@@ -72,14 +67,9 @@ void lzw_context_destroy(
  *                                  current stack entries.
  * \return LZW_OK on success, or appropriate error code otherwise.
  */
-lzw_result lzw_decode_init(
-		struct lzw_ctx *ctx,
-		const uint8_t *compressed_data,
-		uint32_t compressed_data_len,
-		uint32_t compressed_data_pos,
-		uint8_t code_size,
-		const uint8_t ** const stack_base_out,
-		const uint8_t ** const stack_pos_out);
+lzw_result lzw_decode_init(struct lzw_ctx* ctx, const uint8_t* compressed_data, uint32_t compressed_data_len,
+                           uint32_t compressed_data_pos, uint8_t code_size, const uint8_t** const stack_base_out,
+                           const uint8_t** const stack_pos_out);
 
 /**
  * Fill the LZW stack with decompressed data
@@ -97,9 +87,6 @@ lzw_result lzw_decode_init(
  *                            current stack entries.
  * \return LZW_OK on success, or appropriate error code otherwise.
  */
-lzw_result lzw_decode(
-		struct lzw_ctx *ctx,
-		const uint8_t ** const stack_pos_out);
-
+lzw_result lzw_decode(struct lzw_ctx* ctx, const uint8_t** const stack_pos_out);
 
 #endif

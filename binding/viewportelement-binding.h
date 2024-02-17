@@ -22,94 +22,90 @@
 #ifndef VIEWPORTELEMENTBINDING_H
 #define VIEWPORTELEMENTBINDING_H
 
-#include "viewport.h"
-#include "sharedstate.h"
-#include "binding-util.h"
 #include "binding-types.h"
+#include "binding-util.h"
 #include "graphics.h"
+#include "sharedstate.h"
+#include "viewport.h"
 
-#include "sceneelement-binding.h"
 #include "disposable-binding.h"
+#include "sceneelement-binding.h"
 
-template<class C>
+template <class C>
 RB_METHOD(viewportElementGetViewport)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	checkDisposed<C>(self);
+    checkDisposed<C>(self);
 
-	return rb_iv_get(self, "viewport");
+    return rb_iv_get(self, "viewport");
 }
 
-template<class C>
+template <class C>
 RB_METHOD(viewportElementSetViewport)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	ViewportElement *ve = getPrivateData<C>(self);
+    ViewportElement* ve = getPrivateData<C>(self);
 
-	VALUE viewportObj = Qnil;
-	Viewport *viewport = 0;
+    VALUE viewportObj = Qnil;
+    Viewport* viewport = 0;
 
-	rb_get_args(argc, argv, "o", &viewportObj RB_ARG_END);
+    rb_get_args(argc, argv, "o", &viewportObj RB_ARG_END);
 
-	if (!NIL_P(viewportObj))
-		viewport = getPrivateDataCheck<Viewport>(viewportObj, ViewportType);
-    
-    if (rgssVer == 1) {
+    if (!NIL_P(viewportObj)) viewport = getPrivateDataCheck<Viewport>(viewportObj, ViewportType);
+
+    if (rgssVer == 1)
+    {
         VALUE vp = viewportElementGetViewport<C>(0, 0, self);
         disposableRemoveChild(vp, self);
         disposableAddChild(viewportObj, self);
     }
 
-	GFX_GUARD_EXC( ve->setViewport(viewport); );
+    GFX_GUARD_EXC(ve->setViewport(viewport););
 
-	rb_iv_set(self, "viewport", viewportObj);
+    rb_iv_set(self, "viewport", viewportObj);
 
-	return viewportObj;
+    return viewportObj;
 }
 
-template<class C>
-static C *
-viewportElementInitialize(int argc, VALUE *argv, VALUE self)
+template <class C>
+static C* viewportElementInitialize(int argc, VALUE* argv, VALUE self)
 {
-	/* Get parameters */
-	VALUE viewportObj = Qnil;
-	Viewport *viewport = 0;
+    /* Get parameters */
+    VALUE viewportObj = Qnil;
+    Viewport* viewport = 0;
 
-	rb_get_args(argc, argv, "|o", &viewportObj RB_ARG_END);
+    rb_get_args(argc, argv, "|o", &viewportObj RB_ARG_END);
 
-	if (!NIL_P(viewportObj))
-	{
-		viewport = getPrivateDataCheck<Viewport>(viewportObj, ViewportType);
+    if (!NIL_P(viewportObj))
+    {
+        viewport = getPrivateDataCheck<Viewport>(viewportObj, ViewportType);
 
-		if (rgssVer == 1)
-			disposableAddChild(viewportObj, self);
-	}
+        if (rgssVer == 1) disposableAddChild(viewportObj, self);
+    }
 
     GFX_LOCK;
-	/* Construct object */
-	C *ve = new C(viewport);
+    /* Construct object */
+    C* ve = new C(viewport);
 
-    
-	/* Set property objects */
-	rb_iv_set(self, "viewport", viewportObj);
+    /* Set property objects */
+    rb_iv_set(self, "viewport", viewportObj);
     GFX_UNLOCK;
-	return ve;
+    return ve;
 }
 
-template<class C>
-void
-viewportElementBindingInit(VALUE klass)
+template <class C>
+void viewportElementBindingInit(VALUE klass)
 {
-	sceneElementBindingInit<C>(klass);
+    sceneElementBindingInit<C>(klass);
 
-	_rb_define_method(klass, "viewport", viewportElementGetViewport<C>);
+    _rb_define_method(klass, "viewport", viewportElementGetViewport<C>);
 
-    //if (rgssVer >= 2)
-	//{
-	_rb_define_method(klass, "viewport=", viewportElementSetViewport<C>);
-	//}
+    // if (rgssVer >= 2)
+    //{
+    _rb_define_method(klass, "viewport=", viewportElementSetViewport<C>);
+    //}
 }
 
 #endif // VIEWPORTELEMENTBINDING_H

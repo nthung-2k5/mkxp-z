@@ -23,26 +23,26 @@
 
 #include <SDL_events.h>
 #include <SDL_messagebox.h>
-#include <SDL_timer.h>
-#include <SDL_thread.h>
-#include <SDL_touch.h>
 #include <SDL_rect.h>
+#include <SDL_thread.h>
+#include <SDL_timer.h>
+#include <SDL_touch.h>
 
 #include <al.h>
 #include <alc.h>
 #include <alext.h>
 #include <cmath>
 
-#include "sharedstate.h"
 #include "graphics.h"
+#include "sharedstate.h"
 
 #ifndef MKXPZ_BUILD_XCODE
-#include "settingsmenu.h"
 #include "gamecontrollerdb.txt.xxd"
+#include "settingsmenu.h"
 #else
-#include "system/system.h"
-#include "filesystem/filesystem.h"
 #include "TouchBar.h"
+#include "filesystem/filesystem.h"
+#include "system/system.h"
 #endif
 
 #include "al-util.h"
@@ -54,12 +54,12 @@
 
 #include <string.h>
 
-typedef void (ALC_APIENTRY *LPALCDEVICEPAUSESOFT) (ALCdevice *device);
-typedef void (ALC_APIENTRY *LPALCDEVICERESUMESOFT) (ALCdevice *device);
+typedef void(ALC_APIENTRY* LPALCDEVICEPAUSESOFT)(ALCdevice* device);
+typedef void(ALC_APIENTRY* LPALCDEVICERESUMESOFT)(ALCdevice* device);
 
-#define AL_DEVICE_PAUSE_FUN \
-AL_FUN(DevicePause, LPALCDEVICEPAUSESOFT) \
-AL_FUN(DeviceResume, LPALCDEVICERESUMESOFT)
+#define AL_DEVICE_PAUSE_FUN                                                                                            \
+    AL_FUN(DevicePause, LPALCDEVICEPAUSESOFT)                                                                          \
+    AL_FUN(DeviceResume, LPALCDEVICERESUMESOFT)
 
 struct ALCFunctions
 {
@@ -68,15 +68,13 @@ struct ALCFunctions
 #undef AL_FUN
 } static alc;
 
-static void
-initALCFunctions(ALCdevice *alcDev)
+static void initALCFunctions(ALCdevice* alcDev)
 {
-    if (!strstr(alcGetString(alcDev, ALC_EXTENSIONS), "ALC_SOFT_pause_device"))
-        return;
-    
+    if (!strstr(alcGetString(alcDev, ALC_EXTENSIONS), "ALC_SOFT_pause_device")) return;
+
     Debug() << "ALC_SOFT_pause_device present";
-    
-#define AL_FUN(name, type) alc. name = (type) alcGetProcAddress(alcDev, "alc" #name "SOFT");
+
+#define AL_FUN(name, type) alc.name = (type)alcGetProcAddress(alcDev, "alc" #name "SOFT");
     AL_DEVICE_PAUSE_FUN;
 #undef AL_FUN
 }
@@ -99,14 +97,14 @@ enum
     REQUEST_WINCENTER,
     REQUEST_MESSAGEBOX,
     REQUEST_SETCURSORVISIBLE,
-    
+
     REQUEST_TEXTMODE,
-    
+
     REQUEST_SETTINGS,
-    
+
     UPDATE_FPS,
     UPDATE_SCREEN_RECT,
-    
+
     EVENT_COUNT
 };
 
@@ -115,110 +113,98 @@ static uint32_t usrIdStart;
 bool EventThread::allocUserEvents()
 {
     usrIdStart = SDL_RegisterEvents(EVENT_COUNT);
-    
-    if (usrIdStart == (uint32_t) -1)
-        return false;
-    
+
+    if (usrIdStart == (uint32_t)-1) return false;
+
     return true;
 }
 
-EventThread::EventThread()
-: ctrl(0),
-fullscreen(false),
-showCursor(false)
-{
-    textInputLock = SDL_CreateMutex();
-}
+EventThread::EventThread(): ctrl(0), fullscreen(false), showCursor(false) { textInputLock = SDL_CreateMutex(); }
 
-EventThread::~EventThread()
-{
-    SDL_DestroyMutex(textInputLock);
-}
+EventThread::~EventThread() { SDL_DestroyMutex(textInputLock); }
 
 SDL_TimerID hideCursorTimerID = 0;
+
 Uint32 cursorTimerCallback(Uint32 interval, void* param)
 {
-	EventThread *ethread = static_cast<EventThread*>(param);
-	hideCursorTimerID = 0;
-	ethread->requestShowCursor(ethread->getShowCursor());
-	return 0;
-}
-void EventThread::cursorTimer()
-{
-	SDL_RemoveTimer(hideCursorTimerID);
-	hideCursorTimerID = SDL_AddTimer(500, cursorTimerCallback, this);
+    EventThread* ethread = static_cast<EventThread*>(param);
+    hideCursorTimerID = 0;
+    ethread->requestShowCursor(ethread->getShowCursor());
+    return 0;
 }
 
-void EventThread::process(RGSSThreadData &rtData)
+void EventThread::cursorTimer()
+{
+    SDL_RemoveTimer(hideCursorTimerID);
+    hideCursorTimerID = SDL_AddTimer(500, cursorTimerCallback, this);
+}
+
+void EventThread::process(RGSSThreadData& rtData)
 {
     SDL_Event event;
-    SDL_Window *win = rtData.window;
-    UnidirMessage<Vec2i> &windowSizeMsg = rtData.windowSizeMsg;
-    UnidirMessage<Vec2i> &drawableSizeMsg = rtData.drawableSizeMsg;
-    
+    SDL_Window* win = rtData.window;
+    UnidirMessage<Vec2i>& windowSizeMsg = rtData.windowSizeMsg;
+    UnidirMessage<Vec2i>& drawableSizeMsg = rtData.drawableSizeMsg;
+
     initALCFunctions(rtData.alcDev);
-    
+
     // XXX this function breaks input focus on OSX
 #ifndef __APPLE__
     SDL_SetEventFilter(eventFilter, &rtData);
 #endif
-    
+
     fullscreen = rtData.config.fullscreen;
     int toggleFSMod = rtData.config.anyAltToggleFS ? KMOD_ALT : KMOD_LALT;
-    
+
     bool displayingFPS = rtData.config.displayFPS;
-    
-    if (displayingFPS || rtData.config.printFPS)
-        fps.sendUpdates.set();
+
+    if (displayingFPS || rtData.config.printFPS) fps.sendUpdates.set();
 
     bool cursorInWindow = false;
     /* Will be updated eventually */
-    SDL_Rect gameScreen = { 0, 0, 0, 0 };
-    
+    SDL_Rect gameScreen = {0, 0, 0, 0};
+
     /* SDL doesn't send an initial FOCUS_GAINED event */
     bool windowFocused = true;
-    
+
     bool terminate = false;
-    
+
 #ifdef MKXPZ_BUILD_XCODE
     SDL_GameControllerAddMappingsFromFile(mkxp_fs::getPathForAsset("gamecontrollerdb", "txt").c_str());
 #else
     SDL_GameControllerAddMappingsFromRW(
-        SDL_RWFromConstMem(___assets_gamecontrollerdb_txt, ___assets_gamecontrollerdb_txt_len),
-    1);
+        SDL_RWFromConstMem(___assets_gamecontrollerdb_txt, ___assets_gamecontrollerdb_txt_len), 1);
 #endif
-    
+
     SDL_JoystickUpdate();
-    if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0)) {
-            ctrl = SDL_GameControllerOpen(0);
-    }
-    
+    if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0)) { ctrl = SDL_GameControllerOpen(0); }
+
     char buffer[128];
-    
+
     char pendingTitle[128];
     bool havePendingTitle = false;
-    
+
     bool resetting = false;
-    
+
     int winW, winH;
     int i, rc;
-    
+
     SDL_DisplayMode dm = {0};
-    
+
     SDL_GetWindowSize(win, &winW, &winH);
-    
+
     // Just in case it's started when the window is opened
     // for some dumb reason
     SDL_StopTextInput();
-    
+
     textInputBuffer.clear();
 #ifndef MKXPZ_BUILD_XCODE
-    SettingsMenu *sMenu = 0;
+    SettingsMenu* sMenu = 0;
 #else
     // Will always be 0
-    void *sMenu = 0;
+    void* sMenu = 0;
 #endif
-    
+
     while (true)
     {
         if (!SDL_WaitEvent(&event))
@@ -233,451 +219,421 @@ void EventThread::process(RGSSThreadData &rtData)
             {
                 delete sMenu;
                 sMenu = 0;
-                
+
                 updateCursorState(cursorInWindow && windowFocused, gameScreen);
             }
-            
+
             continue;
         }
 #endif
-        
+
         /* Preselect and discard unwanted events here */
         switch (event.type)
         {
-            case SDL_MOUSEBUTTONDOWN :
-            case SDL_MOUSEBUTTONUP :
-            case SDL_MOUSEMOTION :
-                if (event.button.which == SDL_TOUCH_MOUSEID)
-                    continue;
-                break;
-                
-            case SDL_FINGERDOWN :
-            case SDL_FINGERUP :
-            case SDL_FINGERMOTION :
-                if (event.tfinger.fingerId >= MAX_FINGERS)
-                    continue;
-                break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+        case SDL_MOUSEMOTION:
+            if (event.button.which == SDL_TOUCH_MOUSEID) continue;
+            break;
+
+        case SDL_FINGERDOWN:
+        case SDL_FINGERUP:
+        case SDL_FINGERMOTION:
+            if (event.tfinger.fingerId >= MAX_FINGERS) continue;
+            break;
         }
-        
+
         /* Now process the rest */
         switch (event.type)
         {
-            case SDL_WINDOWEVENT :
-                switch (event.window.event)
-                {
-                    case SDL_WINDOWEVENT_SIZE_CHANGED :
-                        winW = event.window.data1;
-                        winH = event.window.data2;
-                        
-                        int drwW, drwH;
-                        SDL_GL_GetDrawableSize(win, &drwW, &drwH);
-                        
-                        windowSizeMsg.post(Vec2i(winW, winH));
-                        drawableSizeMsg.post(Vec2i(drwW, drwH));
-                        resetInputStates();
-                        break;
-                        
-                    case SDL_WINDOWEVENT_ENTER :
-                        cursorInWindow = true;
-                        mouseState.inWindow = true;
-                        updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
-                        
-                        break;
-                        
-                    case SDL_WINDOWEVENT_LEAVE :
-                        cursorInWindow = false;
-                        mouseState.inWindow = false;
-                        updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
-                        
-                        break;
-                        
-                    case SDL_WINDOWEVENT_CLOSE :
-                        terminate = true;
-                        
-                        break;
-                        
-                    case SDL_WINDOWEVENT_FOCUS_GAINED :
-                        windowFocused = true;
-                        updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
-                        
-                        break;
-                        
-                    case SDL_WINDOWEVENT_FOCUS_LOST :
-                        windowFocused = false;
-                        updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
-                        resetInputStates();
-                        
-                        break;
-                }
+        case SDL_WINDOWEVENT:
+            switch (event.window.event)
+            {
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+                winW = event.window.data1;
+                winH = event.window.data2;
+
+                int drwW, drwH;
+                SDL_GL_GetDrawableSize(win, &drwW, &drwH);
+
+                windowSizeMsg.post(Vec2i(winW, winH));
+                drawableSizeMsg.post(Vec2i(drwW, drwH));
+                resetInputStates();
                 break;
-                
-            case SDL_TEXTINPUT :
-                lockText(true);
-                if (textInputBuffer.size() < 512) {
-                    textInputBuffer += event.text.text;
-                }
-                lockText(false);
+
+            case SDL_WINDOWEVENT_ENTER:
+                cursorInWindow = true;
+                mouseState.inWindow = true;
+                updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
+
                 break;
-                
-            case SDL_QUIT :
+
+            case SDL_WINDOWEVENT_LEAVE:
+                cursorInWindow = false;
+                mouseState.inWindow = false;
+                updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
+
+                break;
+
+            case SDL_WINDOWEVENT_CLOSE:
                 terminate = true;
-                Debug() << "EventThread termination requested";
-                
+
                 break;
-                
-            case SDL_KEYDOWN :
-                if (event.key.keysym.scancode == SDL_SCANCODE_RETURN &&
-                    (event.key.keysym.mod & toggleFSMod))
+
+            case SDL_WINDOWEVENT_FOCUS_GAINED:
+                windowFocused = true;
+                updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
+
+                break;
+
+            case SDL_WINDOWEVENT_FOCUS_LOST:
+                windowFocused = false;
+                updateCursorState(cursorInWindow && windowFocused && !sMenu, gameScreen);
+                resetInputStates();
+
+                break;
+            }
+            break;
+
+        case SDL_TEXTINPUT:
+            lockText(true);
+            if (textInputBuffer.size() < 512) { textInputBuffer += event.text.text; }
+            lockText(false);
+            break;
+
+        case SDL_QUIT:
+            terminate = true;
+            Debug() << "EventThread termination requested";
+
+            break;
+
+        case SDL_KEYDOWN:
+            if (event.key.keysym.scancode == SDL_SCANCODE_RETURN && (event.key.keysym.mod & toggleFSMod))
+            {
+                setFullscreen(win, !fullscreen);
+                if (!fullscreen && havePendingTitle)
                 {
-                    setFullscreen(win, !fullscreen);
-                    if (!fullscreen && havePendingTitle)
-                    {
-                        SDL_SetWindowTitle(win, pendingTitle);
-                        pendingTitle[0] = '\0';
-                        havePendingTitle = false;
-                    }
-                    
-                    break;
+                    SDL_SetWindowTitle(win, pendingTitle);
+                    pendingTitle[0] = '\0';
+                    havePendingTitle = false;
                 }
-                
-                if (event.key.keysym.scancode == SDL_SCANCODE_F1 && rtData.config.enableSettings)
+
+                break;
+            }
+
+            if (event.key.keysym.scancode == SDL_SCANCODE_F1 && rtData.config.enableSettings)
+            {
+                // Do not open settings menu until initializing shared state.
+                // Opening before initializing shared state will crash (segmentation fault).
+                if (!shState) { break; }
+
+#ifndef MKXPZ_BUILD_XCODE
+                if (!sMenu)
                 {
-                    // Do not open settings menu until initializing shared state.
-                    // Opening before initializing shared state will crash (segmentation fault).
-                    if (!shState)
+                    sMenu = new SettingsMenu(rtData);
+                    updateCursorState(false, gameScreen);
+                }
+
+                sMenu->raise();
+#else
+                openSettingsWindow();
+#endif
+            }
+
+            if (event.key.keysym.scancode == SDL_SCANCODE_F2)
+            {
+                if (!displayingFPS)
+                {
+
+                    fps.sendUpdates.set();
+                    displayingFPS = true;
+                }
+                else
+                {
+                    displayingFPS = false;
+
+                    if (!rtData.config.printFPS) fps.sendUpdates.clear();
+
+                    if (fullscreen)
                     {
+                        /* Prevent fullscreen flicker */
+                        strncpy(pendingTitle, rtData.config.windowTitle.c_str(), sizeof(pendingTitle));
+                        havePendingTitle = true;
+
                         break;
                     }
 
-#ifndef MKXPZ_BUILD_XCODE
-                    if (!sMenu)
-                    {
-                        sMenu = new SettingsMenu(rtData);
-                        updateCursorState(false, gameScreen);
-                    }
-                    
-                    sMenu->raise();
+                    SDL_SetWindowTitle(win, rtData.config.windowTitle.c_str());
+                }
+
+                break;
+            }
+
+            if (event.key.keysym.scancode == SDL_SCANCODE_F12)
+            {
+                if (!rtData.config.enableReset) break;
+
+                if (resetting) break;
+
+                resetting = true;
+                rtData.rqResetFinish.clear();
+                rtData.rqReset.set();
+                break;
+            }
+
+            keyStates[event.key.keysym.scancode] = true;
+            break;
+
+        case SDL_KEYUP:
+            if (event.key.keysym.scancode == SDL_SCANCODE_F12)
+            {
+                if (!rtData.config.enableReset) break;
+
+                resetting = false;
+                rtData.rqResetFinish.set();
+                break;
+            }
+
+            keyStates[event.key.keysym.scancode] = false;
+            break;
+
+        case SDL_CONTROLLERBUTTONDOWN:
+            controllerState.buttons[event.cbutton.button] = true;
+            break;
+
+        case SDL_CONTROLLERBUTTONUP:
+            controllerState.buttons[event.cbutton.button] = false;
+            break;
+
+        case SDL_CONTROLLERAXISMOTION:
+            controllerState.axes[event.caxis.axis] = event.caxis.value;
+            break;
+
+        case SDL_CONTROLLERDEVICEADDED:
+            if (event.cdevice.which > 0) break;
+
+            ctrl = SDL_GameControllerOpen(0);
+            break;
+
+        case SDL_CONTROLLERDEVICEREMOVED:
+            resetInputStates();
+            ctrl = 0;
+            break;
+
+        case SDL_MOUSEBUTTONDOWN:
+            mouseState.buttons[event.button.button] = true;
+            break;
+
+        case SDL_MOUSEBUTTONUP:
+            mouseState.buttons[event.button.button] = false;
+            break;
+
+        case SDL_MOUSEMOTION:
+            mouseState.x = event.motion.x;
+            mouseState.y = event.motion.y;
+            cursorTimer();
+            updateCursorState(cursorInWindow, gameScreen);
+            break;
+
+        case SDL_MOUSEWHEEL:
+            /* Only consider vertical scrolling for now */
+            SDL_AtomicAdd(&verticalScrollDistance, event.wheel.y);
+
+        case SDL_FINGERDOWN:
+            i = event.tfinger.fingerId;
+            touchState.fingers[i].down = true;
+
+        case SDL_FINGERMOTION:
+            i = event.tfinger.fingerId;
+            touchState.fingers[i].x = event.tfinger.x * winW;
+            touchState.fingers[i].y = event.tfinger.y * winH;
+            break;
+
+        case SDL_FINGERUP:
+            i = event.tfinger.fingerId;
+            memset(&touchState.fingers[i], 0, sizeof(touchState.fingers[0]));
+            break;
+
+        default:
+            /* Handle user events */
+            switch (event.type - usrIdStart)
+            {
+            case REQUEST_SETFULLSCREEN:
+                setFullscreen(win, static_cast<bool>(event.user.code));
+                break;
+
+            case REQUEST_WINRESIZE:
+                SDL_SetWindowSize(win, event.window.data1, event.window.data2);
+                rtData.rqWindowAdjust.clear();
+                break;
+
+            case REQUEST_WINREPOSITION:
+                SDL_SetWindowPosition(win, event.window.data1, event.window.data2);
+                rtData.rqWindowAdjust.clear();
+                break;
+
+            case REQUEST_WINCENTER:
+                rc = SDL_GetDesktopDisplayMode(SDL_GetWindowDisplayIndex(win), &dm);
+                if (!rc) SDL_SetWindowPosition(win, (dm.w / 2) - (winW / 2), (dm.h / 2) - (winH / 2));
+                rtData.rqWindowAdjust.clear();
+                break;
+
+            case REQUEST_WINRENAME:
+                rtData.config.windowTitle = (const char*)event.user.data1;
+                SDL_SetWindowTitle(win, rtData.config.windowTitle.c_str());
+                break;
+
+            case REQUEST_TEXTMODE:
+                if (event.user.code)
+                {
+                    SDL_StartTextInput();
+                    lockText(true);
+                    textInputBuffer.clear();
+                    lockText(false);
+                }
+                else
+                {
+                    SDL_StopTextInput();
+                    lockText(true);
+                    textInputBuffer.clear();
+                    lockText(false);
+                }
+                break;
+
+            case REQUEST_MESSAGEBOX: {
+#ifndef __APPLE__
+                // Try to format the message with additional newlines
+                std::string message = copyWithNewlines((const char*)event.user.data1, 70);
+                SDL_ShowSimpleMessageBox(event.user.code, rtData.config.windowTitle.c_str(), message.c_str(), win);
 #else
-                    openSettingsWindow();
+                SDL_ShowSimpleMessageBox(event.user.code, rtData.config.windowTitle.c_str(),
+                                         (const char*)event.user.data1, win);
 #endif
-                }
-                
-                if (event.key.keysym.scancode == SDL_SCANCODE_F2)
-                {
-                    if (!displayingFPS)
-                    {
-                        
-                        fps.sendUpdates.set();
-                        displayingFPS = true;
-                    }
-                    else
-                    {
-                        displayingFPS = false;
-                        
-                        if (!rtData.config.printFPS)
-                            fps.sendUpdates.clear();
-                        
-                        if (fullscreen)
-                        {
-                            /* Prevent fullscreen flicker */
-                            strncpy(pendingTitle, rtData.config.windowTitle.c_str(),
-                                    sizeof(pendingTitle));
-                            havePendingTitle = true;
-                            
-                            break;
-                        }
-                        
-                        SDL_SetWindowTitle(win, rtData.config.windowTitle.c_str());
-                    }
-                    
-                    break;
-                }
-                
-                if (event.key.keysym.scancode == SDL_SCANCODE_F12)
-                {
-                    if (!rtData.config.enableReset)
-                        break;
-                    
-                    if (resetting)
-                        break;
-                    
-                    resetting = true;
-                    rtData.rqResetFinish.clear();
-                    rtData.rqReset.set();
-                    break;
-                }
-                
-                keyStates[event.key.keysym.scancode] = true;
+                free(event.user.data1);
+                msgBoxDone.set();
                 break;
-                
-            case SDL_KEYUP :
-                if (event.key.keysym.scancode == SDL_SCANCODE_F12)
-                {
-                    if (!rtData.config.enableReset)
-                        break;
-                    
-                    resetting = false;
-                    rtData.rqResetFinish.set();
-                    break;
-                }
-                
-                keyStates[event.key.keysym.scancode] = false;
-                break;
-                
-            case SDL_CONTROLLERBUTTONDOWN:
-                controllerState.buttons[event.cbutton.button] = true;
-                break;
-                
-            case SDL_CONTROLLERBUTTONUP:
-                controllerState.buttons[event.cbutton.button] = false;
-                break;
-                
-            case SDL_CONTROLLERAXISMOTION:
-                controllerState.axes[event.caxis.axis] = event.caxis.value;
-                break;
-                
-            case SDL_CONTROLLERDEVICEADDED:
-                if (event.cdevice.which > 0)
-                    break;
-                
-                ctrl = SDL_GameControllerOpen(0);
-                break;
-                
-            case SDL_CONTROLLERDEVICEREMOVED:
-                resetInputStates();
-                ctrl = 0;
-                break;
-                
-            case SDL_MOUSEBUTTONDOWN :
-                mouseState.buttons[event.button.button] = true;
-                break;
-                
-            case SDL_MOUSEBUTTONUP :
-                mouseState.buttons[event.button.button] = false;
-                break;
-                
-            case SDL_MOUSEMOTION :
-                mouseState.x = event.motion.x;
-                mouseState.y = event.motion.y;
-                cursorTimer();
+            }
+            case REQUEST_SETCURSORVISIBLE:
+                showCursor = event.user.code;
                 updateCursorState(cursorInWindow, gameScreen);
                 break;
-                
-            case SDL_MOUSEWHEEL :
-                /* Only consider vertical scrolling for now */
-                SDL_AtomicAdd(&verticalScrollDistance, event.wheel.y);
-                
-            case SDL_FINGERDOWN :
-                i = event.tfinger.fingerId;
-                touchState.fingers[i].down = true;
-                
-            case SDL_FINGERMOTION :
-                i = event.tfinger.fingerId;
-                touchState.fingers[i].x = event.tfinger.x * winW;
-                touchState.fingers[i].y = event.tfinger.y * winH;
-                break;
-                
-            case SDL_FINGERUP :
-                i = event.tfinger.fingerId;
-                memset(&touchState.fingers[i], 0, sizeof(touchState.fingers[0]));
-                break;
-                
-            default :
-                /* Handle user events */
-                switch(event.type - usrIdStart)
-                {
-                    case REQUEST_SETFULLSCREEN :
-                        setFullscreen(win, static_cast<bool>(event.user.code));
-                        break;
-                        
-                    case REQUEST_WINRESIZE :
-                        SDL_SetWindowSize(win, event.window.data1, event.window.data2);
-                        rtData.rqWindowAdjust.clear();
-                        break;
-                        
-                    case REQUEST_WINREPOSITION :
-                        SDL_SetWindowPosition(win, event.window.data1, event.window.data2);
-                        rtData.rqWindowAdjust.clear();
-                        break;
-                        
-                    case REQUEST_WINCENTER :
-                        rc = SDL_GetDesktopDisplayMode(SDL_GetWindowDisplayIndex(win), &dm);
-                        if (!rc)
-                            SDL_SetWindowPosition(win,
-                                                  (dm.w / 2) - (winW / 2),
-                                                  (dm.h / 2) - (winH / 2));
-                        rtData.rqWindowAdjust.clear();
-                        break;
-                        
-                    case REQUEST_WINRENAME :
-                        rtData.config.windowTitle = (const char*)event.user.data1;
-                        SDL_SetWindowTitle(win, rtData.config.windowTitle.c_str());
-                        break;
-                        
-                    case REQUEST_TEXTMODE :
-                        if (event.user.code)
-                        {
-                            SDL_StartTextInput();
-                            lockText(true);
-                            textInputBuffer.clear();
-                            lockText(false);
-                        }
-                        else
-                        {
-                            SDL_StopTextInput();
-                            lockText(true);
-                            textInputBuffer.clear();
-                            lockText(false);
-                        }
-                        break;
-                        
-                    case REQUEST_MESSAGEBOX :
-                    {
-#ifndef __APPLE__
-                        // Try to format the message with additional newlines
-                        std::string message = copyWithNewlines((const char*) event.user.data1,
-                                                               70);
-                        SDL_ShowSimpleMessageBox(event.user.code,
-                                                 rtData.config.windowTitle.c_str(),
-                                                 message.c_str(), win);
-#else
-                        SDL_ShowSimpleMessageBox(event.user.code,
-                                                 rtData.config.windowTitle.c_str(),
-                                                 (const char*)event.user.data1, win);
-#endif
-                        free(event.user.data1);
-                        msgBoxDone.set();
-                        break;
-                    }
-                    case REQUEST_SETCURSORVISIBLE :
-                        showCursor = event.user.code;
-                        updateCursorState(cursorInWindow, gameScreen);
-                        break;
-                        
-                    case REQUEST_SETTINGS :
+
+            case REQUEST_SETTINGS:
 #ifndef MKXPZ_BUILD_XCODE
-                        if (!sMenu)
-                        {
-                            sMenu = new SettingsMenu(rtData);
-                            updateCursorState(false, gameScreen);
-                        }
-                        
-                        sMenu->raise();
-#else
-                        openSettingsWindow();
-#endif
-                        break;
-                        
-                    case UPDATE_FPS :
-                        if (rtData.config.printFPS)
-                            Debug() << "FPS:" << event.user.code;
-                        
-                        if (!fps.sendUpdates)
-                            break;
-                        
-                        snprintf(buffer, sizeof(buffer), "%s - %d FPS",
-                                 rtData.config.windowTitle.c_str(), event.user.code);
-                        
-                        /* Updating the window title in fullscreen
-                         * mode seems to cause flickering */
-                        if (fullscreen)
-                        {
-                            strncpy(pendingTitle, buffer, sizeof(pendingTitle));
-                            havePendingTitle = true;
-                            
-                            break;
-                        }
-                        
-                        SDL_SetWindowTitle(win, buffer);
-                        break;
-                        
-                    case UPDATE_SCREEN_RECT :
-                        gameScreen.x = event.user.windowID;
-                        gameScreen.y = event.user.code;
-                        gameScreen.w = reinterpret_cast<intptr_t>(event.user.data1);
-                        gameScreen.h = reinterpret_cast<intptr_t>(event.user.data2);
-                        updateCursorState(cursorInWindow, gameScreen);
-                        
-                        break;
+                if (!sMenu)
+                {
+                    sMenu = new SettingsMenu(rtData);
+                    updateCursorState(false, gameScreen);
                 }
+
+                sMenu->raise();
+#else
+                openSettingsWindow();
+#endif
+                break;
+
+            case UPDATE_FPS:
+                if (rtData.config.printFPS) Debug() << "FPS:" << event.user.code;
+
+                if (!fps.sendUpdates) break;
+
+                snprintf(buffer, sizeof(buffer), "%s - %d FPS", rtData.config.windowTitle.c_str(), event.user.code);
+
+                /* Updating the window title in fullscreen
+                 * mode seems to cause flickering */
+                if (fullscreen)
+                {
+                    strncpy(pendingTitle, buffer, sizeof(pendingTitle));
+                    havePendingTitle = true;
+
+                    break;
+                }
+
+                SDL_SetWindowTitle(win, buffer);
+                break;
+
+            case UPDATE_SCREEN_RECT:
+                gameScreen.x = event.user.windowID;
+                gameScreen.y = event.user.code;
+                gameScreen.w = reinterpret_cast<intptr_t>(event.user.data1);
+                gameScreen.h = reinterpret_cast<intptr_t>(event.user.data2);
+                updateCursorState(cursorInWindow, gameScreen);
+
+                break;
+            }
         }
-        
-        if (terminate)
-            break;
+
+        if (terminate) break;
     }
-    
+
     /* Just in case */
     rtData.syncPoint.resumeThreads();
-    
-    if (SDL_GameControllerGetAttached(ctrl))
-        SDL_GameControllerClose(ctrl);
-    
+
+    if (SDL_GameControllerGetAttached(ctrl)) SDL_GameControllerClose(ctrl);
+
 #ifndef MKXPZ_BUILD_XCODE
     delete sMenu;
 #endif
 }
 
-int EventThread::eventFilter(void *data, SDL_Event *event)
+int EventThread::eventFilter(void* data, SDL_Event* event)
 {
-    RGSSThreadData &rtData = *static_cast<RGSSThreadData*>(data);
-    
+    RGSSThreadData& rtData = *static_cast<RGSSThreadData*>(data);
+
     switch (event->type)
     {
-        case SDL_APP_WILLENTERBACKGROUND :
-            Debug() << "SDL_APP_WILLENTERBACKGROUND";
-            
-            if (HAVE_ALC_DEVICE_PAUSE)
-                alc.DevicePause(rtData.alcDev);
-            
-            rtData.syncPoint.haltThreads();
-            
-            return 0;
-            
-        case SDL_APP_DIDENTERBACKGROUND :
-            Debug() << "SDL_APP_DIDENTERBACKGROUND";
-            return 0;
-            
-        case SDL_APP_WILLENTERFOREGROUND :
-            Debug() << "SDL_APP_WILLENTERFOREGROUND";
-            return 0;
-            
-        case SDL_APP_DIDENTERFOREGROUND :
-            Debug() << "SDL_APP_DIDENTERFOREGROUND";
-            
-            if (HAVE_ALC_DEVICE_PAUSE)
-                alc.DeviceResume(rtData.alcDev);
-            
-            rtData.syncPoint.resumeThreads();
-            
-            return 0;
-            
-        case SDL_APP_TERMINATING :
-            Debug() << "SDL_APP_TERMINATING";
-            return 0;
-            
-        case SDL_APP_LOWMEMORY :
-            Debug() << "SDL_APP_LOWMEMORY";
-            return 0;
-            
-            //	case SDL_RENDER_TARGETS_RESET :
-            //		Debug() << "****** SDL_RENDER_TARGETS_RESET";
-            //		return 0;
-            
-            //	case SDL_RENDER_DEVICE_RESET :
-            //		Debug() << "****** SDL_RENDER_DEVICE_RESET";
-            //		return 0;
+    case SDL_APP_WILLENTERBACKGROUND:
+        Debug() << "SDL_APP_WILLENTERBACKGROUND";
+
+        if (HAVE_ALC_DEVICE_PAUSE) alc.DevicePause(rtData.alcDev);
+
+        rtData.syncPoint.haltThreads();
+
+        return 0;
+
+    case SDL_APP_DIDENTERBACKGROUND:
+        Debug() << "SDL_APP_DIDENTERBACKGROUND";
+        return 0;
+
+    case SDL_APP_WILLENTERFOREGROUND:
+        Debug() << "SDL_APP_WILLENTERFOREGROUND";
+        return 0;
+
+    case SDL_APP_DIDENTERFOREGROUND:
+        Debug() << "SDL_APP_DIDENTERFOREGROUND";
+
+        if (HAVE_ALC_DEVICE_PAUSE) alc.DeviceResume(rtData.alcDev);
+
+        rtData.syncPoint.resumeThreads();
+
+        return 0;
+
+    case SDL_APP_TERMINATING:
+        Debug() << "SDL_APP_TERMINATING";
+        return 0;
+
+    case SDL_APP_LOWMEMORY:
+        Debug() << "SDL_APP_LOWMEMORY";
+        return 0;
+
+        //	case SDL_RENDER_TARGETS_RESET :
+        //		Debug() << "****** SDL_RENDER_TARGETS_RESET";
+        //		return 0;
+
+        //	case SDL_RENDER_DEVICE_RESET :
+        //		Debug() << "****** SDL_RENDER_DEVICE_RESET";
+        //		return 0;
     }
-    
+
     return 1;
 }
 
 void EventThread::cleanup()
 {
     SDL_Event event;
-    
+
     while (SDL_PollEvent(&event))
-        if ((event.type - usrIdStart) == REQUEST_MESSAGEBOX)
-            free(event.user.data1);
+        if ((event.type - usrIdStart) == REQUEST_MESSAGEBOX) free(event.user.data1);
 }
 
 void EventThread::resetInputStates()
@@ -688,19 +644,17 @@ void EventThread::resetInputStates()
     memset(&touchState, 0, sizeof(touchState));
 }
 
-void EventThread::setFullscreen(SDL_Window *win, bool mode)
+void EventThread::setFullscreen(SDL_Window* win, bool mode)
 {
-    SDL_SetWindowFullscreen
-    (win, mode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    SDL_SetWindowFullscreen(win, mode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     fullscreen = mode;
 }
 
-void EventThread::updateCursorState(bool inWindow,
-                                    const SDL_Rect &screen)
+void EventThread::updateCursorState(bool inWindow, const SDL_Rect& screen)
 {
-    SDL_Point pos = { mouseState.x, mouseState.y };
+    SDL_Point pos = {mouseState.x, mouseState.y};
     bool inScreen = inWindow && SDL_PointInRect(&pos, &screen);
-    
+
     if (inScreen)
         SDL_ShowCursor(showCursor || hideCursorTimerID ? SDL_TRUE : SDL_FALSE);
     else
@@ -716,9 +670,8 @@ void EventThread::requestTerminate()
 
 void EventThread::requestFullscreenMode(bool mode)
 {
-    if (mode == fullscreen)
-        return;
-    
+    if (mode == fullscreen) return;
+
     SDL_Event event;
     event.type = usrIdStart + REQUEST_SETFULLSCREEN;
     event.user.code = static_cast<Sint32>(mode);
@@ -753,7 +706,7 @@ void EventThread::requestWindowCenter()
     SDL_PushEvent(&event);
 }
 
-void EventThread::requestWindowRename(const char *title)
+void EventThread::requestWindowRename(const char* title)
 {
     SDL_Event event;
     event.type = usrIdStart + REQUEST_WINRENAME;
@@ -784,46 +737,33 @@ void EventThread::requestSettingsMenu()
     SDL_PushEvent(&event);
 }
 
-void EventThread::showMessageBox(const char *body, int flags)
+void EventThread::showMessageBox(const char* body, int flags)
 {
     msgBoxDone.clear();
-    
+
     // mkxp has already been asked to quit.
     // Don't break things if the window wants to close
-    if (shState->rtData().rqTerm)
-        return;
-    
+    if (shState->rtData().rqTerm) return;
+
     SDL_Event event;
     event.user.code = flags;
     event.user.data1 = strdup(body);
     event.type = usrIdStart + REQUEST_MESSAGEBOX;
     SDL_PushEvent(&event);
-    
+
     /* Keep repainting screen while box is open */
     shState->graphics().repaintWait(msgBoxDone);
     /* Prevent endless loops */
     resetInputStates();
 }
 
-bool EventThread::getFullscreen() const
-{
-    return fullscreen;
-}
+bool EventThread::getFullscreen() const { return fullscreen; }
 
-bool EventThread::getShowCursor() const
-{
-    return showCursor;
-}
+bool EventThread::getShowCursor() const { return showCursor; }
 
-bool EventThread::getControllerConnected() const
-{
-    return ctrl != 0;
-}
+bool EventThread::getControllerConnected() const { return ctrl != 0; }
 
-SDL_GameController *EventThread::controller() const
-{
-    return ctrl;
-}
+SDL_GameController* EventThread::controller() const { return ctrl; }
 
 void EventThread::notifyFrame()
 {
@@ -831,9 +771,8 @@ void EventThread::notifyFrame()
     uint32_t frames = round(shState->graphics().averageFrameRate());
     updateTouchBarFPSDisplay(frames);
 #endif
-    if (!fps.sendUpdates)
-        return;
-    
+    if (!fps.sendUpdates) return;
+
     SDL_Event event;
 #ifdef MKXPZ_BUILD_XCODE
     event.user.code = frames;
@@ -844,7 +783,7 @@ void EventThread::notifyFrame()
     SDL_PushEvent(&event);
 }
 
-void EventThread::notifyGameScreenChange(const SDL_Rect &screen)
+void EventThread::notifyGameScreenChange(const SDL_Rect& screen)
 {
     /* We have to get a bit hacky here to fit the rectangle
      * data into the user event struct */
@@ -857,24 +796,20 @@ void EventThread::notifyGameScreenChange(const SDL_Rect &screen)
     SDL_PushEvent(&event);
 }
 
-void EventThread::lockText(bool lock)
-{
-    lock ? SDL_LockMutex(textInputLock) : SDL_UnlockMutex(textInputLock);
-}
+void EventThread::lockText(bool lock) { lock ? SDL_LockMutex(textInputLock) : SDL_UnlockMutex(textInputLock); }
 
 void SyncPoint::haltThreads()
 {
-    if (mainSync.locked)
-        return;
-    
+    if (mainSync.locked) return;
+
     /* Lock the reply sync first to avoid races */
     reply.lock();
-    
+
     /* Lock main sync and sleep until RGSS thread
      * reports back */
     mainSync.lock();
     reply.waitForUnlock();
-    
+
     /* Now that the RGSS thread is asleep, we can
      * safely put the other threads to sleep as well
      * without causing deadlocks */
@@ -883,17 +818,13 @@ void SyncPoint::haltThreads()
 
 void SyncPoint::resumeThreads()
 {
-    if (!mainSync.locked)
-        return;
-    
+    if (!mainSync.locked) return;
+
     mainSync.unlock(false);
     secondSync.unlock(true);
 }
 
-bool SyncPoint::mainSyncLocked()
-{
-    return mainSync.locked;
-}
+bool SyncPoint::mainSyncLocked() { return mainSync.locked; }
 
 void SyncPoint::waitMainSync()
 {
@@ -903,9 +834,8 @@ void SyncPoint::waitMainSync()
 
 void SyncPoint::passSecondarySync()
 {
-    if (!secondSync.locked)
-        return;
-    
+    if (!secondSync.locked) return;
+
     secondSync.waitForUnlock();
 }
 
@@ -921,15 +851,12 @@ SyncPoint::Util::~Util()
     SDL_DestroyMutex(mut);
 }
 
-void SyncPoint::Util::lock()
-{
-    locked.set();
-}
+void SyncPoint::Util::lock() { locked.set(); }
 
 void SyncPoint::Util::unlock(bool multi)
 {
     locked.clear();
-    
+
     if (multi)
         SDL_CondBroadcast(cond);
     else
@@ -939,9 +866,9 @@ void SyncPoint::Util::unlock(bool multi)
 void SyncPoint::Util::waitForUnlock()
 {
     SDL_LockMutex(mut);
-    
+
     while (locked)
         SDL_CondWait(cond, mut);
-    
+
     SDL_UnlockMutex(mut);
 }

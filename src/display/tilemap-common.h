@@ -22,258 +22,225 @@
 #ifndef TILEMAPCOMMON_H
 #define TILEMAPCOMMON_H
 
-#include "table.h"
-#include "gl-util.h"
+#include "etc-internal.h"
 #include "gl-meta.h"
-#include "sharedstate.h"
+#include "gl-util.h"
 #include "global-ibo.h"
 #include "glstate.h"
-#include "shader.h"
-#include "vertex.h"
 #include "quad.h"
-#include "etc-internal.h"
+#include "shader.h"
+#include "sharedstate.h"
+#include "table.h"
+#include "vertex.h"
 
-#include <stdint.h>
 #include <assert.h>
+#include <stdint.h>
 #include <vector>
 
 #include "sigslot/signal.hpp"
 
-static inline int
-wrap(int value, int range)
+static inline int wrap(int value, int range)
 {
-	int res = value % range;
-	return res < 0 ? res + range : res;
+    int res = value % range;
+    return res < 0 ? res + range : res;
 }
 
-static inline Vec2i
-wrap(const Vec2i &value, int range)
-{
-	return Vec2i(wrap(value.x, range),
-	             wrap(value.y, range));
-}
+static inline Vec2i wrap(const Vec2i& value, int range) { return Vec2i(wrap(value.x, range), wrap(value.y, range)); }
 
-static inline int16_t
-tableGetWrapped(const Table &t, int x, int y, int z = 0)
+static inline int16_t tableGetWrapped(const Table& t, int x, int y, int z = 0)
 {
-	return t.get(wrap(x, t.xSize()),
-	             wrap(y, t.ySize()),
-	             z);
+    return t.get(wrap(x, t.xSize()), wrap(y, t.ySize()), z);
 }
 
 /* Calculate the tile x/y on which this pixel x/y lies */
-static inline Vec2i
-getTilePos(const Vec2i &pixelPos)
+static inline Vec2i getTilePos(const Vec2i& pixelPos)
 {
-	/* Round the pixel position down to the nearest top left
-	 * tile boundary, by masking off the lower 5 bits (2^5 = 32).
-	 * Then divide by 32 to convert into tile units. */
-	return (pixelPos & ~(32-1)) / 32;
+    /* Round the pixel position down to the nearest top left
+     * tile boundary, by masking off the lower 5 bits (2^5 = 32).
+     * Then divide by 32 to convert into tile units. */
+    return (pixelPos & ~(32 - 1)) / 32;
 }
 
 enum AtSubPos
 {
-	TopLeft          = 0,
-	TopRight         = 1,
-	BottomLeft       = 2,
-	BottomRight      = 3,
-	BottomLeftTable  = 4,
-	BottomRightTable = 5
+    TopLeft = 0,
+    TopRight = 1,
+    BottomLeft = 2,
+    BottomRight = 3,
+    BottomLeftTable = 4,
+    BottomRightTable = 5
 };
 
-static inline void
-atSelectSubPos(FloatRect &pos, int i)
+static inline void atSelectSubPos(FloatRect& pos, int i)
 {
-	switch (i)
-	{
-	case TopLeft:
-		return;
-	case TopRight:
-		pos.x += 16;
-		return;
-	case BottomLeft:
-		pos.y += 16;
-		return;
-	case BottomRight:
-		pos.x += 16;
-		pos.y += 16;
-		return;
-	case BottomLeftTable:
-		pos.y += 24;
-		return;
-	case BottomRightTable:
-		pos.x += 16;
-		pos.y += 24;
-		return;
-	default:
-		assert(!"Unreachable");
-	}
+    switch (i)
+    {
+    case TopLeft:
+        return;
+    case TopRight:
+        pos.x += 16;
+        return;
+    case BottomLeft:
+        pos.y += 16;
+        return;
+    case BottomRight:
+        pos.x += 16;
+        pos.y += 16;
+        return;
+    case BottomLeftTable:
+        pos.y += 24;
+        return;
+    case BottomRightTable:
+        pos.x += 16;
+        pos.y += 24;
+        return;
+    default:
+        assert(!"Unreachable");
+    }
 }
 
 struct FlashMap
 {
-	FlashMap()
-		: dirty(false),
-	      data(0),
-	      allocQuads(0)
-	{
-		vao.vbo = VBO::gen();
-		vao.ibo = shState->globalIBO().ibo;
-		GLMeta::vaoFillInVertexData<CVertex>(vao);
+    FlashMap(): dirty(false), data(0), allocQuads(0)
+    {
+        vao.vbo = VBO::gen();
+        vao.ibo = shState->globalIBO().ibo;
+        GLMeta::vaoFillInVertexData<CVertex>(vao);
 
-		GLMeta::vaoInit(vao);
-	}
+        GLMeta::vaoInit(vao);
+    }
 
-	~FlashMap()
-	{
-		GLMeta::vaoFini(vao);
-		VBO::del(vao.vbo);
-		dataCon.disconnect();
-	}
+    ~FlashMap()
+    {
+        GLMeta::vaoFini(vao);
+        VBO::del(vao.vbo);
+        dataCon.disconnect();
+    }
 
-	Table *getData() const
-	{
-		return data;
-	}
+    Table* getData() const { return data; }
 
-	void setData(Table *value)
-	{
-		if (data == value)
-			return;
+    void setData(Table* value)
+    {
+        if (data == value) return;
 
-		data = value;
-		dataCon.disconnect();
-		dirty = true;
+        data = value;
+        dataCon.disconnect();
+        dirty = true;
 
-		if (!data)
-			return;
+        if (!data) return;
 
-        
-        
         dataCon = data->modified.connect(&FlashMap::setDirty, this);
-	}
+    }
 
-	void setViewport(const IntRect &value)
-	{
-		viewp = value;
-		dirty = true;
-	}
+    void setViewport(const IntRect& value)
+    {
+        viewp = value;
+        dirty = true;
+    }
 
-	void prepare()
-	{
-		if (!dirty)
-			return;
+    void prepare()
+    {
+        if (!dirty) return;
 
-		rebuildBuffer();
-		dirty = false;
-	}
+        rebuildBuffer();
+        dirty = false;
+    }
 
-	void draw(float alpha, const Vec2i &trans)
-	{
-		const size_t count = quadCount();
+    void draw(float alpha, const Vec2i& trans)
+    {
+        const size_t count = quadCount();
 
-		if (count == 0)
-			return;
+        if (count == 0) return;
 
-		GLMeta::vaoBind(vao);
-		glState.blendMode.pushSet(BlendAddition);
+        GLMeta::vaoBind(vao);
+        glState.blendMode.pushSet(BlendAddition);
 
-		FlashMapShader &shader = shState->shaders().flashMap;
-		shader.bind();
-		shader.applyViewportProj();
-		shader.setAlpha(alpha);
-		shader.setTranslation(trans);
+        FlashMapShader& shader = shState->shaders().flashMap;
+        shader.bind();
+        shader.applyViewportProj();
+        shader.setAlpha(alpha);
+        shader.setTranslation(trans);
 
-		gl.DrawElements(GL_TRIANGLES, count * 6, _GL_INDEX_TYPE, 0);
+        gl.DrawElements(GL_TRIANGLES, count * 6, _GL_INDEX_TYPE, 0);
 
-		glState.blendMode.pop();
+        glState.blendMode.pop();
 
-		GLMeta::vaoUnbind(vao);
-	}
+        GLMeta::vaoUnbind(vao);
+    }
 
-private:
-	void setDirty()
-	{
-		dirty = true;
-	}
+  private:
+    void setDirty() { dirty = true; }
 
-	size_t quadCount() const
-	{
-		return vertices.size() / 4;
-	}
+    size_t quadCount() const { return vertices.size() / 4; }
 
-	bool sampleFlashColor(Vec4 &out, int x, int y) const
-	{
-		int16_t packed = tableGetWrapped(*data, x, y);
+    bool sampleFlashColor(Vec4& out, int x, int y) const
+    {
+        int16_t packed = tableGetWrapped(*data, x, y);
 
-		if (packed == 0)
-			return false;
+        if (packed == 0) return false;
 
-		const float max = 0xF;
+        const float max = 0xF;
 
-		float b = ((packed & 0x000F) >> 0) / max;
-		float g = ((packed & 0x00F0) >> 4) / max;
-		float r = ((packed & 0x0F00) >> 8) / max;
+        float b = ((packed & 0x000F) >> 0) / max;
+        float g = ((packed & 0x00F0) >> 4) / max;
+        float r = ((packed & 0x0F00) >> 8) / max;
 
-		out = Vec4(r, g, b, 1);
+        out = Vec4(r, g, b, 1);
 
-		return true;
-	}
+        return true;
+    }
 
-	void rebuildBuffer()
-	{
-		vertices.clear();
+    void rebuildBuffer()
+    {
+        vertices.clear();
 
-		if (!data)
-			return;
+        if (!data) return;
 
-		for (int x = 0; x < viewp.w; ++x)
-			for (int y = 0; y < viewp.h; ++y)
-			{
-				Vec4 color;
+        for (int x = 0; x < viewp.w; ++x)
+            for (int y = 0; y < viewp.h; ++y)
+            {
+                Vec4 color;
 
-				if (!sampleFlashColor(color, x+viewp.x, y+viewp.y))
-					continue;
+                if (!sampleFlashColor(color, x + viewp.x, y + viewp.y)) continue;
 
-				FloatRect posRect(x*32, y*32, 32, 32);
+                FloatRect posRect(x * 32, y * 32, 32, 32);
 
-				CVertex v[4];
-				Quad::setPosRect(v, posRect);
-				Quad::setColor(v, color);
+                CVertex v[4];
+                Quad::setPosRect(v, posRect);
+                Quad::setColor(v, color);
 
-				for (size_t i = 0; i < 4; ++i)
-					vertices.push_back(v[i]);
-			}
+                for (size_t i = 0; i < 4; ++i)
+                    vertices.push_back(v[i]);
+            }
 
-		if (vertices.size() == 0)
-			return;
+        if (vertices.size() == 0) return;
 
-		VBO::bind(vao.vbo);
+        VBO::bind(vao.vbo);
 
-		if (quadCount() > allocQuads)
-		{
-			allocQuads = quadCount();
-			VBO::allocEmpty(sizeof(CVertex) * vertices.size());
-		}
+        if (quadCount() > allocQuads)
+        {
+            allocQuads = quadCount();
+            VBO::allocEmpty(sizeof(CVertex) * vertices.size());
+        }
 
-		VBO::uploadSubData(0, sizeof(CVertex) * vertices.size(), dataPtr(vertices));
+        VBO::uploadSubData(0, sizeof(CVertex) * vertices.size(), dataPtr(vertices));
 
-		VBO::unbind();
+        VBO::unbind();
 
-		/* Ensure global IBO size */
-		shState->ensureQuadIBO(quadCount());
-	}
+        /* Ensure global IBO size */
+        shState->ensureQuadIBO(quadCount());
+    }
 
-	bool dirty;
+    bool dirty;
 
-	Table *data;
-	sigslot::connection dataCon;
+    Table* data;
+    sigslot::connection dataCon;
 
-	IntRect viewp;
+    IntRect viewp;
 
-	GLMeta::VAO vao;
-	size_t allocQuads;
-	std::vector<CVertex> vertices;
+    GLMeta::VAO vao;
+    size_t allocQuads;
+    std::vector<CVertex> vertices;
 };
 
 #endif // TILEMAPCOMMON_H

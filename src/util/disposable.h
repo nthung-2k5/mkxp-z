@@ -22,75 +22,58 @@
 #ifndef DISPOSABLE_H
 #define DISPOSABLE_H
 
-#include "intrulist.h"
 #include "exception.h"
-#include "sharedstate.h"
 #include "graphics.h"
+#include "intrulist.h"
+#include "sharedstate.h"
 
-#include <assert.h>
 #include "sigslot/signal.hpp"
+#include <assert.h>
 
 class Disposable
 {
-public:
-	Disposable()
-	    : disposed(false),
-	      link(this)
-	{
-		shState->graphics().addDisposable(this);
-	}
+  public:
+    Disposable(): disposed(false), link(this) { shState->graphics().addDisposable(this); }
 
-	virtual ~Disposable()
-	{
-		shState->graphics().remDisposable(this);
-	}
+    virtual ~Disposable() { shState->graphics().remDisposable(this); }
 
-	void dispose()
-	{
-		if (disposed)
-			return;
+    void dispose()
+    {
+        if (disposed) return;
 
-		releaseResources();
-		disposed = true;
-		wasDisposed();
-	}
+        releaseResources();
+        disposed = true;
+        wasDisposed();
+    }
 
-	bool isDisposed() const
-	{
-		return disposed;
-	}
+    bool isDisposed() const { return disposed; }
 
     sigslot::signal<> wasDisposed;
 
-protected:
-	void guardDisposed() const
-	{
-		if (isDisposed())
-			throw Exception(Exception::RGSSError,
-		                    "disposed %s", klassName());
-	}
+  protected:
+    void guardDisposed() const
+    {
+        if (isDisposed()) throw Exception(Exception::RGSSError, "disposed %s", klassName());
+    }
 
-private:
-	virtual void releaseResources() = 0;
-	virtual const char *klassName() const = 0;
+  private:
+    virtual void releaseResources() = 0;
+    virtual const char* klassName() const = 0;
 
-	friend class Graphics;
+    friend class Graphics;
 
-	bool disposed;
-	IntruListLink<Disposable> link;
+    bool disposed;
+    IntruListLink<Disposable> link;
 };
 
-template<class C>
-inline bool
-nullOrDisposed(const C *d)
+template <class C>
+inline bool nullOrDisposed(const C* d)
 {
-	if (!d)
-		return true;
+    if (!d) return true;
 
-	if (d->isDisposed())
-		return true;
+    if (d->isDisposed()) return true;
 
-	return false;
+    return false;
 }
 
 #endif // DISPOSABLE_H

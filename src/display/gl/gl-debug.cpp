@@ -28,64 +28,53 @@
 
 struct GLDebugLoggerPrivate
 {
-	std::ostream *stream;
+    std::ostream* stream;
 
-	GLDebugLoggerPrivate(const char *logFilename)
-	{
-		(void) logFilename;
+    GLDebugLoggerPrivate(const char* logFilename)
+    {
+        (void)logFilename;
 
-		stream = &std::clog;
-	}
+        stream = &std::clog;
+    }
 
-	~GLDebugLoggerPrivate()
-	{
-	}
+    ~GLDebugLoggerPrivate() {}
 
-	void writeTimestamp()
-	{
-		// FIXME reintroduce proper time stamps (is this even necessary??)
-		*stream << "[GLDEBUG] ";
-	}
+    void writeTimestamp()
+    {
+        // FIXME reintroduce proper time stamps (is this even necessary??)
+        *stream << "[GLDEBUG] ";
+    }
 
-	void writeLine(const char *line)
-	{
-		*stream << line << "\n";
-		stream->flush();
-	}
+    void writeLine(const char* line)
+    {
+        *stream << line << "\n";
+        stream->flush();
+    }
 };
 
-static void APIENTRY arbDebugFunc(GLenum source,
-                                  GLenum type,
-                                  GLuint id,
-                                  GLenum severity,
-                                  GLsizei length,
-                                  const GLchar* message,
-                                  const void* userParam)
+static void APIENTRY arbDebugFunc(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
+                                  const GLchar* message, const void* userParam)
 {
-	GLDebugLoggerPrivate *p =
-		static_cast<GLDebugLoggerPrivate*>(const_cast<void*>(userParam));
+    GLDebugLoggerPrivate* p = static_cast<GLDebugLoggerPrivate*>(const_cast<void*>(userParam));
 
-	(void) source;
-	(void) type;
-	(void) id;
-	(void) severity;
-	(void) length;
+    (void)source;
+    (void)type;
+    (void)id;
+    (void)severity;
+    (void)length;
 
-	p->writeTimestamp();
-	p->writeLine(message);
+    p->writeTimestamp();
+    p->writeLine(message);
 }
 
-GLDebugLogger::GLDebugLogger(const char *filename)
+GLDebugLogger::GLDebugLogger(const char* filename)
 {
-	p = new GLDebugLoggerPrivate(filename);
+    p = new GLDebugLoggerPrivate(filename);
 
-	if (gl.DebugMessageCallback)
-		gl.DebugMessageCallback(arbDebugFunc, p);
-	else
-		Debug() << "DebugLogger: no debug extensions found";
+    if (gl.DebugMessageCallback)
+        gl.DebugMessageCallback(arbDebugFunc, p);
+    else
+        Debug() << "DebugLogger: no debug extensions found";
 }
 
-GLDebugLogger::~GLDebugLogger()
-{
-	delete p;
-}
+GLDebugLogger::~GLDebugLogger() { delete p; }

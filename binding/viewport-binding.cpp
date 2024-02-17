@@ -33,41 +33,47 @@ DEF_TYPE(Viewport);
 DEF_ALLOCFUNC(Viewport);
 #endif
 
-RB_METHOD(viewportInitialize) {
-    Viewport *v;
-    
-    if (argc == 0 && rgssVer >= 3) {
+RB_METHOD(viewportInitialize)
+{
+    Viewport* v;
+
+    if (argc == 0 && rgssVer >= 3)
+    {
         GFX_LOCK;
         v = new Viewport();
-    } else if (argc == 1) {
+    }
+    else if (argc == 1)
+    {
         /* The rect arg is only used to init the viewport,
          * and does NOT replace its 'rect' property */
         VALUE rectObj;
-        Rect *rect;
-        
+        Rect* rect;
+
         rb_get_args(argc, argv, "o", &rectObj RB_ARG_END);
-        
+
         rect = getPrivateDataCheck<Rect>(rectObj, RectType);
-        
+
         GFX_LOCK;
         v = new Viewport(rect);
-    } else {
+    }
+    else
+    {
         int x, y, width, height;
-        
+
         rb_get_args(argc, argv, "iiii", &x, &y, &width, &height RB_ARG_END);
         GFX_LOCK;
         v = new Viewport(x, y, width, height);
     }
-    
+
     setPrivateData(self, v);
-    
+
     /* Wrap property objects */
     v->initDynAttribs();
-    
+
     wrapProperty(self, &v->getRect(), "rect", RectType);
     wrapProperty(self, &v->getColor(), "color", ColorType);
     wrapProperty(self, &v->getTone(), "tone", ToneType);
-    
+
     /* 'elements' holds all SceneElements that become children
      * of this viewport, so we can dispose them when the viewport
      * is disposed */
@@ -79,15 +85,13 @@ RB_METHOD(viewportInitialize) {
 RB_METHOD(viewportSpriteFinalize)
 {
     RB_UNUSED_PARAM;
-    
+
     VALUE objectid;
-    
+
     rb_get_args(argc, argv, "o", &objectid RB_ARG_END);
-    
-    if (rgssVer == 1) {
-        disposableForgetChild(self, objectid);
-    }
-    
+
+    if (rgssVer == 1) { disposableForgetChild(self, objectid); }
+
     return Qnil;
 }
 
@@ -98,21 +102,22 @@ DEF_GFX_PROP_OBJ_VAL(Viewport, Tone, Tone, "tone")
 DEF_GFX_PROP_I(Viewport, OX)
 DEF_GFX_PROP_I(Viewport, OY)
 
-void viewportBindingInit() {
+void viewportBindingInit()
+{
     VALUE klass = rb_define_class("Viewport", rb_cObject);
 #if RAPI_FULL > 187
     rb_define_alloc_func(klass, classAllocate<&ViewportType>);
 #else
     rb_define_alloc_func(klass, ViewportAllocate);
 #endif
-    
+
     disposableBindingInit<Viewport>(klass);
     flashableBindingInit<Viewport>(klass);
     sceneElementBindingInit<Viewport>(klass);
-    
+
     _rb_define_method(klass, "initialize", viewportInitialize);
     _rb_define_method(klass, "_sprite_finalizer", viewportSpriteFinalize);
-    
+
     INIT_PROP_BIND(Viewport, Rect, "rect");
     INIT_PROP_BIND(Viewport, OX, "ox");
     INIT_PROP_BIND(Viewport, OY, "oy");

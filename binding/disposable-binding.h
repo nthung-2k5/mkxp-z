@@ -22,37 +22,33 @@
 #ifndef DISPOSABLEBINDING_H
 #define DISPOSABLEBINDING_H
 
-#include "disposable.h"
 #include "binding-util.h"
+#include "disposable.h"
 #include "graphics.h"
 
 /* 'Children' are disposables that are disposed together
  * with their parent. Currently this is only used by Viewport
  * in RGSS1. */
-inline void
-disposableAddChild(VALUE disp, VALUE child)
+inline void disposableAddChild(VALUE disp, VALUE child)
 {
     GFX_LOCK;
-    if (NIL_P(disp) || NIL_P(child)) {
-        return;
-    }
-    
+    if (NIL_P(disp) || NIL_P(child)) { return; }
+
     VALUE objID = rb_obj_id(child);
-    
-	VALUE children = rb_iv_get(disp, "children");
-    
+
+    VALUE children = rb_iv_get(disp, "children");
+
     bool exists = false;
 
-	if (NIL_P(children))
-	{
-		children = rb_ary_new();
-		rb_iv_set(disp, "children", children);
-	}
-    else {
-        exists = RTEST(rb_funcall(children, rb_intern("include?"), 1, objID));
+    if (NIL_P(children))
+    {
+        children = rb_ary_new();
+        rb_iv_set(disp, "children", children);
     }
+    else { exists = RTEST(rb_funcall(children, rb_intern("include?"), 1, objID)); }
 
-    if (!exists) {
+    if (!exists)
+    {
         rb_ary_push(children, objID);
         VALUE objectspace = rb_const_get(rb_cObject, rb_intern("ObjectSpace"));
         VALUE method = rb_funcall(disp, rb_intern("method"), 1, rb_id2sym(rb_intern("_sprite_finalizer")));
@@ -61,120 +57,104 @@ disposableAddChild(VALUE disp, VALUE child)
     GFX_UNLOCK;
 }
 
-inline void
-disposableRemoveChild(VALUE disp, VALUE child)
+inline void disposableRemoveChild(VALUE disp, VALUE child)
 {
     GFX_LOCK;
-    if (NIL_P(disp) || NIL_P(child)) {
-        return;
-    }
-    
+    if (NIL_P(disp) || NIL_P(child)) { return; }
+
     VALUE objID = rb_obj_id(child);
-    
+
     VALUE children = rb_iv_get(disp, "children");
-    if (NIL_P(children))
-        return;
-    
+    if (NIL_P(children)) return;
+
     VALUE index = rb_funcall(children, rb_intern("index"), 1, objID);
-    if (NIL_P(index))
-        return;
-    
+    if (NIL_P(index)) return;
+
     rb_funcall(children, rb_intern("delete_at"), 1, index);
     GFX_UNLOCK;
 }
 
-inline void
-disposableForgetChild(VALUE disp, VALUE child)
+inline void disposableForgetChild(VALUE disp, VALUE child)
 {
     VALUE children = rb_iv_get(disp, "children");
-    
-    if (NIL_P(children)) {
-        return;
-    }
-    
+
+    if (NIL_P(children)) { return; }
+
     VALUE index = rb_funcall(children, rb_intern("index"), 1, child);
-    if (NIL_P(index)) {
-        return;
-    }
-    
+    if (NIL_P(index)) { return; }
+
     rb_funcall(children, rb_intern("delete_at"), 1, index);
 }
 
-inline void
-disposableDisposeChildren(VALUE disp)
+inline void disposableDisposeChildren(VALUE disp)
 {
-	VALUE children = rb_iv_get(disp, "children");
+    VALUE children = rb_iv_get(disp, "children");
 
-	if (NIL_P(children))
-		return;
+    if (NIL_P(children)) return;
 
-    for (long i = 0; i < RARRAY_LEN(children); ++i) {
+    for (long i = 0; i < RARRAY_LEN(children); ++i)
+    {
         int state;
-        rb_protect([](VALUE args){
-            VALUE objectspace = rb_const_get(rb_cObject, rb_intern("ObjectSpace"));
-            VALUE ref = rb_funcall(objectspace, rb_intern("_id2ref"), 1, args);
-            rb_funcall(ref, rb_intern("_mkxp_dispose_alias"), 0);
-            return Qnil;
-        }, rb_ary_entry(children, i), &state);
+        rb_protect(
+            [](VALUE args) {
+                VALUE objectspace = rb_const_get(rb_cObject, rb_intern("ObjectSpace"));
+                VALUE ref = rb_funcall(objectspace, rb_intern("_id2ref"), 1, args);
+                rb_funcall(ref, rb_intern("_mkxp_dispose_alias"), 0);
+                return Qnil;
+            },
+            rb_ary_entry(children, i), &state);
     }
-		//rb_funcall2(rb_ary_entry(children, i), dispFun, 0, 0);
+    // rb_funcall2(rb_ary_entry(children, i), dispFun, 0, 0);
 }
 
-template<class C>
+template <class C>
 RB_METHOD(disposableDispose)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	C *d = getPrivateData<C>(self);
+    C* d = getPrivateData<C>(self);
 
-	if (!d)
-		return Qnil;
+    if (!d) return Qnil;
 
-	/* Nothing to do if already disposed */
-	if (d->isDisposed())
-		return Qnil;
+    /* Nothing to do if already disposed */
+    if (d->isDisposed()) return Qnil;
 
-	if (rgssVer == 1)
-		disposableDisposeChildren(self);
+    if (rgssVer == 1) disposableDisposeChildren(self);
 
     GFX_LOCK;
-	d->dispose();
+    d->dispose();
     GFX_UNLOCK;
 
-	return Qnil;
+    return Qnil;
 }
 
-template<class C>
+template <class C>
 RB_METHOD(disposableIsDisposed)
 {
-	RB_UNUSED_PARAM;
+    RB_UNUSED_PARAM;
 
-	C *d = getPrivateData<C>(self);
+    C* d = getPrivateData<C>(self);
 
-	if (!d)
-		return Qtrue;
+    if (!d) return Qtrue;
 
-	return rb_bool_new(d->isDisposed());
+    return rb_bool_new(d->isDisposed());
 }
 
-template<class C>
+template <class C>
 static void disposableBindingInit(VALUE klass)
 {
-	_rb_define_method(klass, "dispose", disposableDispose<C>);
-	_rb_define_method(klass, "disposed?", disposableIsDisposed<C>);
+    _rb_define_method(klass, "dispose", disposableDispose<C>);
+    _rb_define_method(klass, "disposed?", disposableIsDisposed<C>);
 
-	/* Make sure we always have access to the original method, even
-	 * if it is overridden by user scripts */
-	if (rgssVer == 1)
-		rb_define_alias(klass, "_mkxp_dispose_alias", "dispose");
+    /* Make sure we always have access to the original method, even
+     * if it is overridden by user scripts */
+    if (rgssVer == 1) rb_define_alias(klass, "_mkxp_dispose_alias", "dispose");
 }
 
-template<class C>
-inline void
-checkDisposed(VALUE self)
+template <class C>
+inline void checkDisposed(VALUE self)
 {
-	if (disposableIsDisposed<C>(0, 0, self) == Qtrue)
-		raiseDisposedAccess(self);
+    if (disposableIsDisposed<C>(0, 0, self) == Qtrue) raiseDisposedAccess(self);
 }
 
 #endif // DISPOSABLEBINDING_H

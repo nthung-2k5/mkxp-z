@@ -22,9 +22,9 @@
 #ifndef SOUNDEMITTER_H
 #define SOUNDEMITTER_H
 
-#include "intrulist.h"
 #include "al-util.h"
 #include "boost-hash.h"
+#include "intrulist.h"
 
 #include <string>
 #include <vector>
@@ -34,32 +34,30 @@ struct Config;
 
 struct SoundEmitter
 {
-	typedef BoostHash<std::string, SoundBuffer*> BufferHash;
+    typedef BoostHash<std::string, SoundBuffer*> BufferHash;
 
-	IntruList<SoundBuffer> buffers;
-	BufferHash bufferHash;
+    IntruList<SoundBuffer> buffers;
+    BufferHash bufferHash;
 
-	/* Byte count sum of all cached / playing buffers */
-	uint32_t bufferBytes;
+    /* Byte count sum of all cached / playing buffers */
+    uint32_t bufferBytes;
 
-	const size_t srcCount;
-	std::vector<AL::Source::ID> alSrcs;
-	std::vector<SoundBuffer*> atchBufs;
+    const size_t srcCount;
+    std::vector<AL::Source::ID> alSrcs;
+    std::vector<SoundBuffer*> atchBufs;
 
-	/* Indices of sources, sorted by priority (lowest first) */
-	std::vector<size_t> srcPrio;
+    /* Indices of sources, sorted by priority (lowest first) */
+    std::vector<size_t> srcPrio;
 
-	SoundEmitter(const Config &conf);
-	~SoundEmitter();
+    SoundEmitter(const Config& conf);
+    ~SoundEmitter();
 
-	void play(const std::string &filename,
-	          int volume,
-	          int pitch);
+    void play(const std::string& filename, int volume, int pitch);
 
-	void stop();
+    void stop();
 
-private:
-	SoundBuffer *allocateBuffer(const std::string &filename);
+  private:
+    SoundBuffer* allocateBuffer(const std::string& filename);
 };
 
 #endif // SOUNDEMITTER_H

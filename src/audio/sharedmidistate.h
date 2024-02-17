@@ -27,123 +27,112 @@
 #include "fluid-fun.h"
 
 #include <assert.h>
-#include <vector>
 #include <string>
+#include <vector>
 
 #define SYNTH_INIT_COUNT 2
 #define SYNTH_SAMPLERATE 44100
 
 struct Synth
 {
-	fluid_synth_t *synth;
-	bool inUse;
+    fluid_synth_t* synth;
+    bool inUse;
 };
 
 struct SharedMidiState
 {
-	bool inited;
-	std::vector<Synth> synths;
-	const std::string &soundFont;
-	fluid_settings_t *flSettings;
+    bool inited;
+    std::vector<Synth> synths;
+    const std::string& soundFont;
+    fluid_settings_t* flSettings;
 
-	SharedMidiState(const Config &conf)
-	    : inited(false),
-	      soundFont(conf.midi.soundFont)
-	{}
+    SharedMidiState(const Config& conf): inited(false), soundFont(conf.midi.soundFont) {}
 
-	~SharedMidiState()
-	{
-		/* We might have initialized, but if the consecutive libfluidsynth
-		 * load failed, no resources will have been allocated */
-		if (!inited || !HAVE_FLUID)
-			return;
+    ~SharedMidiState()
+    {
+        /* We might have initialized, but if the consecutive libfluidsynth
+         * load failed, no resources will have been allocated */
+        if (!inited || !HAVE_FLUID) return;
 
-		fluid.delete_settings(flSettings);
+        fluid.delete_settings(flSettings);
 
-		for (size_t i = 0; i < synths.size(); ++i)
-		{
-			assert(!synths[i].inUse);
-			fluid.delete_synth(synths[i].synth);
-		}
-	}
+        for (size_t i = 0; i < synths.size(); ++i)
+        {
+            assert(!synths[i].inUse);
+            fluid.delete_synth(synths[i].synth);
+        }
+    }
 
-	void initIfNeeded(const Config &conf)
-	{
-		if (inited)
-			return;
+    void initIfNeeded(const Config& conf)
+    {
+        if (inited) return;
 
-		inited = true;
+        inited = true;
 
-		initFluidFunctions();
+        initFluidFunctions();
 
-		if (!HAVE_FLUID)
-			return;
+        if (!HAVE_FLUID) return;
 
-		flSettings = fluid.new_settings();
-		fluid.settings_setnum(flSettings, "synth.gain", 1.0f);
-		fluid.settings_setnum(flSettings, "synth.sample-rate", SYNTH_SAMPLERATE);
-		fluid.settings_setint(flSettings, "synth.chorus.active", conf.midi.chorus);
-		fluid.settings_setint(flSettings, "synth.reverb.active", conf.midi.reverb);
+        flSettings = fluid.new_settings();
+        fluid.settings_setnum(flSettings, "synth.gain", 1.0f);
+        fluid.settings_setnum(flSettings, "synth.sample-rate", SYNTH_SAMPLERATE);
+        fluid.settings_setint(flSettings, "synth.chorus.active", conf.midi.chorus);
+        fluid.settings_setint(flSettings, "synth.reverb.active", conf.midi.reverb);
 
-		for (size_t i = 0; i < SYNTH_INIT_COUNT; ++i)
-			addSynth(false);
-	}
+        for (size_t i = 0; i < SYNTH_INIT_COUNT; ++i)
+            addSynth(false);
+    }
 
-	fluid_synth_t *allocateSynth()
-	{
-		assert(HAVE_FLUID);
-		assert(inited);
+    fluid_synth_t* allocateSynth()
+    {
+        assert(HAVE_FLUID);
+        assert(inited);
 
-		size_t i;
+        size_t i;
 
-		for (i = 0; i < synths.size(); ++i)
-			if (!synths[i].inUse)
-				break;
+        for (i = 0; i < synths.size(); ++i)
+            if (!synths[i].inUse) break;
 
-		if (i < synths.size())
-		{
-			fluid_synth_t *syn = synths[i].synth;
-			fluid.synth_system_reset(syn);
-			synths[i].inUse = true;
+        if (i < synths.size())
+        {
+            fluid_synth_t* syn = synths[i].synth;
+            fluid.synth_system_reset(syn);
+            synths[i].inUse = true;
 
-			return syn;
-		}
-		else
-		{
-			return addSynth(true);
-		}
-	}
+            return syn;
+        }
+        else { return addSynth(true); }
+    }
 
-	void releaseSynth(fluid_synth_t *synth)
-	{
-		size_t i;
+    void releaseSynth(fluid_synth_t* synth)
+    {
+        size_t i;
 
-		for (i = 0; i < synths.size(); ++i)
-			if (synths[i].synth == synth)
-				break;
+        for (i = 0; i < synths.size(); ++i)
+            if (synths[i].synth == synth) break;
 
-		assert(i < synths.size());
+        assert(i < synths.size());
 
-		synths[i].inUse = false;
-	}
+        synths[i].inUse = false;
+    }
 
-private:
-	fluid_synth_t *addSynth(bool usedNow)
-	{
-		fluid_synth_t *syn = fluid.new_synth(flSettings);
+  private:
+    fluid_synth_t* addSynth(bool usedNow)
+    {
+        fluid_synth_t* syn = fluid.new_synth(flSettings);
 
-		if (!soundFont.empty())
-			fluid.synth_sfload(syn, soundFont.c_str(), 1);
-		else
-			Debug() << "Warning: No soundfont specified, sound might be mute";
+        if (!soundFont.empty())
+            fluid.synth_sfload(syn, soundFont.c_str(), 1);
+        else
+            Debug() << "Warning: No soundfont specified, sound might be mute";
 
-		Synth synth;
-		synth.inUse = usedNow;
-		synth.synth = syn;
-		synths.push_back(synth);
+        Synth synth;
+        synth.inUse = usedNow;
+        synth.synth = syn;
+        synths.push_back(synth);
 
-		return syn;
-	}
+        return syn;
+    }
 };
 
 #endif // SHAREDMIDISTATE_H

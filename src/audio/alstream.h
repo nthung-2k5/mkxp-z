@@ -25,8 +25,8 @@
 #include "al-util.h"
 #include "sdl-util.h"
 
-#include <string>
 #include <SDL_rwops.h>
+#include <string>
 
 struct ALDataSource;
 
@@ -36,87 +36,86 @@ struct ALDataSource;
  * This class is NOT thread safe */
 struct ALStream
 {
-	enum State
-	{
-		Closed,
-		Stopped,
-		Playing,
-		Paused
-	};
+    enum State
+    {
+        Closed,
+        Stopped,
+        Playing,
+        Paused
+    };
 
-	bool looped;
-	State state;
+    bool looped;
+    State state;
 
-	ALDataSource *source;
-	SDL_Thread *thread;
+    ALDataSource* source;
+    SDL_Thread* thread;
 
-	std::string threadName;
+    std::string threadName;
 
-	SDL_mutex *pauseMut;
-	bool preemptPause;
+    SDL_mutex* pauseMut;
+    bool preemptPause;
 
-	/* When this flag isn't set and alSrc is
-	 * in 'STOPPED' state, stream isn't over
-	 * (it just hasn't started yet) */
-	AtomicFlag streamInited;
-	AtomicFlag sourceExhausted;
+    /* When this flag isn't set and alSrc is
+     * in 'STOPPED' state, stream isn't over
+     * (it just hasn't started yet) */
+    AtomicFlag streamInited;
+    AtomicFlag sourceExhausted;
 
-	AtomicFlag threadTermReq;
+    AtomicFlag threadTermReq;
 
-	AtomicFlag needsRewind;
-	float startOffset;
+    AtomicFlag needsRewind;
+    float startOffset;
 
-	float pitch;
+    float pitch;
 
-	AL::Source::ID alSrc;
-	AL::Buffer::ID alBuf[STREAM_BUFS];
+    AL::Source::ID alSrc;
+    AL::Buffer::ID alBuf[STREAM_BUFS];
 
-	uint64_t procFrames;
-	AL::Buffer::ID lastBuf;
+    uint64_t procFrames;
+    AL::Buffer::ID lastBuf;
 
-	SDL_RWops srcOps;
+    SDL_RWops srcOps;
 
-	struct
-	{
-		ALenum format;
-		ALsizei freq;
-	} stream;
+    struct
+    {
+        ALenum format;
+        ALsizei freq;
+    } stream;
 
-	enum LoopMode
-	{
-		Looped,
-		NotLooped
-	};
+    enum LoopMode
+    {
+        Looped,
+        NotLooped
+    };
 
-	ALStream(LoopMode loopMode,
-	         const std::string &threadId);
-	~ALStream();
+    ALStream(LoopMode loopMode, const std::string& threadId);
+    ~ALStream();
 
-	void close();
-	void open(const std::string &filename);
-	void stop();
-	void play(float offset = 0);
-	void pause();
+    void close();
+    void open(const std::string& filename);
+    void stop();
+    void play(float offset = 0);
+    void pause();
 
-	void setVolume(float value);
-	void setPitch(float value);
-	State queryState();
-	float queryOffset();
-	bool queryNativePitch();
+    void setVolume(float value);
+    void setPitch(float value);
+    State queryState();
+    float queryOffset();
+    bool queryNativePitch();
 
-private:
-	void closeSource();
-	void openSource(const std::string &filename);
+  private:
+    void closeSource();
+    void openSource(const std::string& filename);
 
-	void stopStream();
-	void startStream(float offset);
-	void pauseStream();
-	void resumeStream();
+    void stopStream();
+    void startStream(float offset);
+    void pauseStream();
+    void resumeStream();
 
-	void checkStopped();
+    void checkStopped();
 
-	/* thread func */
-	void streamData();
+    /* thread func */
+    void streamData();
 };
 
 #endif // ALSTREAM_H

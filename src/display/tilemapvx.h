@@ -31,45 +31,47 @@ class Table;
 
 struct TilemapVXPrivate;
 
-class TilemapVX : public Disposable
+class TilemapVX: public Disposable
 {
-public:
-	class BitmapArray
-	{
-	public:
-		void set(int i, Bitmap *bitmap);
-		Bitmap *get(int i) const;
+  public:
+    class BitmapArray
+    {
+      public:
+        void set(int i, Bitmap* bitmap);
+        Bitmap* get(int i) const;
 
-	private:
-		BitmapArray() {}
-		~BitmapArray() {}
+      private:
+        BitmapArray() {}
 
-		TilemapVXPrivate *p;
-		friend class TilemapVX;
-		friend struct TilemapVXPrivate;
-	};
+        ~BitmapArray() {}
 
-	TilemapVX(Viewport *viewport = 0);
-	~TilemapVX();
+        TilemapVXPrivate* p;
+        friend class TilemapVX;
+        friend struct TilemapVXPrivate;
+    };
 
-	void update();
+    TilemapVX(Viewport* viewport = 0);
+    ~TilemapVX();
 
-	BitmapArray &getBitmapArray();
+    void update();
 
-	DECL_ATTR( Viewport,   Viewport* )
-	DECL_ATTR( MapData,    Table*    )
-	DECL_ATTR( FlashData,  Table*    )
-	DECL_ATTR( Flags,      Table*    )
-	DECL_ATTR( Visible,    bool      )
-	DECL_ATTR( OX,         int       )
-	DECL_ATTR( OY,         int       )
+    BitmapArray& getBitmapArray();
 
-private:
-	TilemapVXPrivate *p;
-	BitmapArray bmProxy;
+    DECL_ATTR(Viewport, Viewport*)
+    DECL_ATTR(MapData, Table*)
+    DECL_ATTR(FlashData, Table*)
+    DECL_ATTR(Flags, Table*)
+    DECL_ATTR(Visible, bool)
+    DECL_ATTR(OX, int)
+    DECL_ATTR(OY, int)
 
-	void releaseResources();
-	const char *klassName() const { return "tilemap"; }
+  private:
+    TilemapVXPrivate* p;
+    BitmapArray bmProxy;
+
+    void releaseResources();
+
+    const char* klassName() const { return "tilemap"; }
 };
 
 #endif // TILEMAPVX_H

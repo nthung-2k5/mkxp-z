@@ -8,8 +8,8 @@
 #include <SDL_filesystem.h>
 
 #include "filesystemImpl.h"
-#include "util/exception.h"
 #include "util/debugwriter.h"
+#include "util/exception.h"
 
 #ifdef MKXPZ_EXP_FS
 #include <experimental/filesystem>
@@ -22,25 +22,29 @@ namespace fs = ghc::filesystem;
 #include <fstream>
 
 // https://stackoverflow.com/questions/12774207/fastest-way-to-check-if-a-file-exist-using-standard-c-c11-c
-bool filesystemImpl::fileExists(const char *path) {
+bool filesystemImpl::fileExists(const char* path)
+{
     fs::path stdPath(path);
     return (fs::exists(stdPath) && !fs::is_directory(stdPath));
 }
 
-bool filesystemImpl::directoryExists(const char *path) {
+bool filesystemImpl::directoryExists(const char* path)
+{
     fs::path stdPath(path);
     return (fs::exists(stdPath) && fs::is_directory(stdPath));
 }
 
-
 // https://stackoverflow.com/questions/2912520/read-file-contents-into-a-string-in-c
-std::string filesystemImpl::contentsOfFileAsString(const char *path) {
+std::string filesystemImpl::contentsOfFileAsString(const char* path)
+{
     std::string ret;
-    try {
+    try
+    {
         std::ifstream ifs(path);
-        ret = std::string ( (std::istreambuf_iterator<char>(ifs) ),
-                       (std::istreambuf_iterator<char>()    ) );
-    } catch (...) {
+        ret = std::string((std::istreambuf_iterator<char>(ifs)), (std::istreambuf_iterator<char>()));
+    }
+    catch (...)
+    {
         throw Exception(Exception::NoFileError, "Failed to read file at %s", path);
     }
 
@@ -48,44 +52,53 @@ std::string filesystemImpl::contentsOfFileAsString(const char *path) {
 }
 
 // chdir and getcwd do not support unicode on Windows
-bool filesystemImpl::setCurrentDirectory(const char *path) {
+bool filesystemImpl::setCurrentDirectory(const char* path)
+{
     fs::path stdPath(path);
     fs::current_path(stdPath);
     bool ret;
 
-    try {
+    try
+    {
         ret = fs::equivalent(fs::current_path(), stdPath);
-    } catch (...) {
+    }
+    catch (...)
+    {
         Debug() << "Failed to check current path." << path;
         ret = false;
     }
     return ret;
 }
 
-std::string filesystemImpl::getCurrentDirectory() {
+std::string filesystemImpl::getCurrentDirectory()
+{
     std::string ret;
-    try {
+    try
+    {
         ret = std::string(fs::current_path().string());
-    } catch (...) {
+    }
+    catch (...)
+    {
         throw Exception(Exception::MKXPError, "Failed to retrieve current path");
     }
     return ret;
 }
 
-
-std::string filesystemImpl::normalizePath(const char *path, bool preferred, bool absolute) {
+std::string filesystemImpl::normalizePath(const char* path, bool preferred, bool absolute)
+{
     fs::path stdPath(path);
-    
-    if (!stdPath.is_absolute() && absolute)
-        stdPath = fs::current_path() / stdPath;
+
+    if (!stdPath.is_absolute() && absolute) stdPath = fs::current_path() / stdPath;
 
     stdPath = stdPath.lexically_normal();
     std::string ret(stdPath);
-    for (size_t i = 0; i < ret.length(); i++) {
+    for (size_t i = 0; i < ret.length(); i++)
+    {
         char sep;
         char sep_alt;
 #ifdef __WIN32__
-        if (preferred) {
+        if (preferred)
+        {
             sep = '\\';
             sep_alt = '/';
         }
@@ -95,15 +108,15 @@ std::string filesystemImpl::normalizePath(const char *path, bool preferred, bool
             sep = '/';
             sep_alt = '\\';
         }
-        
-        if (ret[i] == sep_alt)
-            ret[i] = sep;
+
+        if (ret[i] == sep_alt) ret[i] = sep;
     }
     return ret;
 }
 
-std::string filesystemImpl::getDefaultGameRoot() {
-    char *p = SDL_GetBasePath();
+std::string filesystemImpl::getDefaultGameRoot()
+{
+    char* p = SDL_GetBasePath();
     std::string ret(p);
     SDL_free(p);
     return ret;

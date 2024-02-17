@@ -13,111 +13,108 @@
 #include <vector>
 
 #include "filesystem/filesystem.h"
-#include "util/exception.h"
 #include "util/debugwriter.h"
+#include "util/exception.h"
 #include "util/sdl-util.h"
 #include "util/util.h"
 
 #include "util/json5pp.hpp"
 
-#include "util/iniconfig.h"
 #include "util/encoding.h"
+#include "util/iniconfig.h"
 
 #include "system/system.h"
 
-
 namespace json = json5pp;
 
-std::string prefPath(const char *org, const char *app) {
-    char *path = SDL_GetPrefPath(org, app);
-    if (!path)
-        return std::string("");
+std::string prefPath(const char* org, const char* app)
+{
+    char* path = SDL_GetPrefPath(org, app);
+    if (!path) return std::string("");
     std::string ret(path);
     SDL_free(path);
     return ret;
 }
 
-void fillStringVec(json::value &item, std::vector<std::string> &vector) {
-    if (!item.is_array()) {
-        if (item.is_string()) {
-            vector.push_back(item.as_string());
-        }
+void fillStringVec(json::value& item, std::vector<std::string>& vector)
+{
+    if (!item.is_array())
+    {
+        if (item.is_string()) { vector.push_back(item.as_string()); }
         return;
     }
-    auto &array = item.as_array();
-    for (size_t i = 0; i < array.size(); i++) {
-        if (!array[i].is_string())
-            continue;
-        
+    auto& array = item.as_array();
+    for (size_t i = 0; i < array.size(); i++)
+    {
+        if (!array[i].is_string()) continue;
+
         vector.push_back(array[i].as_string());
     }
 }
 
-bool copyObject(json::value &dest, json::value &src, const char *objectName = "") {
+bool copyObject(json::value& dest, json::value& src, const char* objectName = "")
+{
     assert(dest.is_object());
-    if (src.is_null())
-        return false;
-    
-    if (!src.is_object())
-        return false;
-    
-    auto &srcVec = src.as_object();
-    auto &destVec = dest.as_object();
-    
-    for (auto it : srcVec) {
+    if (src.is_null()) return false;
+
+    if (!src.is_object()) return false;
+
+    auto& srcVec = src.as_object();
+    auto& destVec = dest.as_object();
+
+    for (auto it: srcVec)
+    {
         // Specifically processs this object later.
-        if (it.second.is_object() && destVec[it.first].is_object())
-            continue;
-        
-        if ((it.second.is_array() && destVec[it.first].is_array())    ||
-            (it.second.is_number() && destVec[it.first].is_number())  ||
-            (it.second.is_string() && destVec[it.first].is_string())  ||
-            (it.second.is_boolean() && destVec[it.first].is_boolean()) ||
-            (destVec[it.first].is_null()))
+        if (it.second.is_object() && destVec[it.first].is_object()) continue;
+
+        if ((it.second.is_array() && destVec[it.first].is_array()) ||
+            (it.second.is_number() && destVec[it.first].is_number()) ||
+            (it.second.is_string() && destVec[it.first].is_string()) ||
+            (it.second.is_boolean() && destVec[it.first].is_boolean()) || (destVec[it.first].is_null()))
         {
             destVec[it.first] = it.second;
         }
-        else {
-            Debug() << "Invalid variable in configuration:" << objectName << it.first;
-        }
+        else { Debug() << "Invalid variable in configuration:" << objectName << it.first; }
     }
     return true;
 }
 
-bool getEnvironmentBool(const char *env, bool defaultValue) {
-    const char *e = SDL_getenv(env);
-    if (!e)
-        return defaultValue;
-    
+bool getEnvironmentBool(const char* env, bool defaultValue)
+{
+    const char* e = SDL_getenv(env);
+    if (!e) return defaultValue;
+
     if (!strcmp(e, "0"))
         return false;
     else if (!strcmp(e, "1"))
         return true;
-    
+
     return defaultValue;
 }
 
-json::value readConfFile(const char *path) {
-    
+json::value readConfFile(const char* path)
+{
+
     json::value ret(0);
-    if (!mkxp_fs::fileExists(path)) {
-        return json::object({});
-    }
-    
-    try {
+    if (!mkxp_fs::fileExists(path)) { return json::object({}); }
+
+    try
+    {
         std::string cfg = mkxp_fs::contentsOfFileAsString(path);
         ret = json::parse5(Encoding::convertString(cfg));
     }
-    catch (const std::exception &e) {
+    catch (const std::exception& e)
+    {
         Debug() << "Failed to parse" << path << ":" << e.what();
     }
-    catch (const Exception &e) {
-        Debug() << "Failed to parse" << path << ":" << "Unknown encoding";
+    catch (const Exception& e)
+    {
+        Debug() << "Failed to parse" << path << ":"
+                << "Unknown encoding";
     }
-    
-    if (!ret.is_object())
-        ret = json::object({});
-    
+
+    if (!ret.is_object()) ret = json::object({});
+
     return ret;
 }
 
@@ -125,114 +122,79 @@ json::value readConfFile(const char *path) {
 
 Config::Config() {}
 
-void Config::read(int argc, char *argv[]) {
+void Config::read(int argc, char* argv[])
+{
     auto optsJ = json::object({
-        {"rgssVersion", 0},
-        {"debugMode", false},
-        {"displayFPS", false},
-        {"printFPS", false},
-        {"winResizable", true},
-        {"fullscreen", false},
-        {"fixedAspectRatio", true},
-        {"smoothScaling", 0},
-        {"bicubicSharpness", 100},
+        {"rgssVersion", 0}, {"debugMode", false}, {"displayFPS", false}, {"printFPS", false}, {"winResizable", true},
+            {"fullscreen", false}, {"fixedAspectRatio", true}, {"smoothScaling", 0}, {"bicubicSharpness", 100},
 #ifdef MKXPZ_SSL
-        {"xbrzScalingFactor", 1.},
+            {"xbrzScalingFactor", 1.},
 #endif
-        {"enableHires", false},
-        {"textureScalingFactor", 1.},
-        {"framebufferScalingFactor", 1.},
-        {"atlasScalingFactor", 1.},
-        {"vsync", false},
-        {"defScreenW", 0},
-        {"defScreenH", 0},
-        {"windowTitle", ""},
-        {"fixedFramerate", 0},
-        {"frameSkip", false},
-        {"syncToRefreshrate", false},
-        {"solidFonts", json::array({})},
+            {"enableHires", false}, {"textureScalingFactor", 1.}, {"framebufferScalingFactor", 1.},
+            {"atlasScalingFactor", 1.}, {"vsync", false}, {"defScreenW", 0}, {"defScreenH", 0}, {"windowTitle", ""},
+            {"fixedFramerate", 0}, {"frameSkip", false}, {"syncToRefreshrate", false}, {"solidFonts", json::array({})},
 #if defined(__APPLE__) && defined(__aarch64__)
-        {"preferMetalRenderer", true},
+            {"preferMetalRenderer", true},
 #else
-        {"preferMetalRenderer", false},
+            {"preferMetalRenderer", false},
 #endif
-        {"subImageFix", false},
+            {"subImageFix", false},
 #ifdef __WIN32__
-        {"enableBlitting", false},
+            {"enableBlitting", false},
 #else
-        {"enableBlitting", true},
+            {"enableBlitting", true},
 #endif
-        {"integerScalingActive", false},
-        {"integerScalingLastMile", true},
-        {"maxTextureSize", 0},
-        {"gameFolder", ""},
-        {"anyAltToggleFS", false},
-        {"enableReset", true},
-        {"enableSettings", true},
-        {"allowSymlinks", false},
-        {"dataPathOrg", ""},
-        {"dataPathApp", ""},
-        {"iconPath", ""},
-        {"execName", "Game"},
-        {"midiSoundFont", ""},
-        {"midiChorus", false},
-        {"midiReverb", false},
-        {"SESourceCount", 6},
-        {"BGMTrackCount", 1},
-        {"customScript", ""},
-        {"pathCache", true},
-        {"useScriptNames", true},
-        {"preloadScript", json::array({})},
-        {"RTP", json::array({})},
-        {"patches", json::array({})},
-        {"fontSub", json::array({})},
-        {"rubyLoadpath", json::array({})},
-        {"JITEnable", false},
-        {"JITVerboseLevel", 0},
-        {"JITMaxCache", 100},
-        {"JITMinCalls", 10000},
-        {"YJITEnable", false},
-        {"dumpAtlas", false},
-        {"bindingNames", json::object({
-            {"a", "A"},
-            {"b", "B"},
-            {"c", "C"},
-            {"x", "X"},
-            {"y", "Y"},
-            {"z", "Z"},
-            {"l", "L"},
-            {"r", "R"}
-        })}
+            {"integerScalingActive", false}, {"integerScalingLastMile", true}, {"maxTextureSize", 0},
+            {"gameFolder", ""}, {"anyAltToggleFS", false}, {"enableReset", true}, {"enableSettings", true},
+            {"allowSymlinks", false}, {"dataPathOrg", ""}, {"dataPathApp", ""}, {"iconPath", ""}, {"execName", "Game"},
+            {"midiSoundFont", ""}, {"midiChorus", false}, {"midiReverb", false}, {"SESourceCount", 6},
+            {"BGMTrackCount", 1}, {"customScript", ""}, {"pathCache", true}, {"useScriptNames", true},
+            {"preloadScript", json::array({})}, {"RTP", json::array({})}, {"patches", json::array({})},
+            {"fontSub", json::array({})}, {"rubyLoadpath", json::array({})}, {"JITEnable", false},
+            {"JITVerboseLevel", 0}, {"JITMaxCache", 100}, {"JITMinCalls", 10000}, {"YJITEnable", false},
+            {"dumpAtlas", false},
+        {
+            "bindingNames",
+                json::object(
+                    {{"a", "A"}, {"b", "B"}, {"c", "C"}, {"x", "X"}, {"y", "Y"}, {"z", "Z"}, {"l", "L"}, {"r", "R"}})
+        }
     });
-    
-    auto &opts = optsJ.as_object();
-    
-#define GUARD(exp) \
-try { exp } catch (...) {}
-    
+
+    auto& opts = optsJ.as_object();
+
+#define GUARD(exp)                                                                                                     \
+    try                                                                                                                \
+    {                                                                                                                  \
+        exp                                                                                                            \
+    }                                                                                                                  \
+    catch (...)                                                                                                        \
+    {                                                                                                                  \
+    }
+
     editor.debug = false;
     editor.battleTest = false;
-    
-    if (argc > 1) {
+
+    if (argc > 1)
+    {
         if (!strcmp(argv[1], "debug") || !strcmp(argv[1], "test"))
             editor.debug = true;
         else if (!strcmp(argv[1], "btest"))
             editor.battleTest = true;
-        
-        for (int i = 1; i < argc; i++) {
-            if (strcmp(argv[i], "debug"))
-                launchArgs.push_back(argv[i]);
+
+        for (int i = 1; i < argc; i++)
+        {
+            if (strcmp(argv[i], "debug")) launchArgs.push_back(argv[i]);
         }
     }
-    
+
     json::value baseConf = readConfFile(CONF_FILE);
     copyObject(optsJ, baseConf);
     copyObject(opts["bindingNames"], baseConf.as_object()["bindingNames"], "bindingNames .");
-    
+
 #define SET_OPT_CUSTOMKEY(var, key, type) GUARD(var = opts[#key].as_##type();)
 #define SET_OPT(var, type) SET_OPT_CUSTOMKEY(var, var, type)
 #define SET_STRINGOPT(var, key) GUARD(var = std::string(opts[#key].as_string());)
-    
+
     SET_STRINGOPT(gameFolder, gameFolder);
     SET_STRINGOPT(dataPathOrg, dataPathOrg);
     SET_STRINGOPT(dataPathApp, dataPathApp);
@@ -248,21 +210,22 @@ try { exp } catch (...) {}
     SET_OPT(rgssVersion, integer);
     SET_OPT(defScreenW, integer);
     SET_OPT(defScreenH, integer);
-    
+
     // Take a break real quick and witch to set game folder and read the game's ini
-    if (!gameFolder.empty() && !mkxp_fs::setCurrentDirectory(gameFolder.c_str())) {
+    if (!gameFolder.empty() && !mkxp_fs::setCurrentDirectory(gameFolder.c_str()))
+    {
         throw Exception(Exception::MKXPError, "Unable to switch into gameFolder %s", gameFolder.c_str());
     }
-    
+
     readGameINI();
-    
+
     // Now check for an extra mkxp.conf in the user's save directory and merge anything else from that
     userConfPath = mkxp_fs::normalizePath(std::string(customDataPath + "/" CONF_FILE).c_str(), 0, 1);
     json::value userConf = readConfFile(userConfPath.c_str());
     copyObject(optsJ, userConf);
-    
+
     // now RESUME
-    
+
     SET_OPT(debugMode, boolean);
     SET_OPT(displayFPS, boolean);
     SET_OPT(printFPS, boolean);
@@ -284,9 +247,9 @@ try { exp } catch (...) {}
     SET_OPT(frameSkip, boolean);
     SET_OPT(syncToRefreshrate, boolean);
     fillStringVec(opts["solidFonts"], solidFonts);
-    for (std::string & solidFont : solidFonts)
+    for (std::string& solidFont: solidFonts)
         std::transform(solidFont.begin(), solidFont.end(), solidFont.begin(),
-            [](unsigned char c) { return std::tolower(c); });
+                       [](unsigned char c) { return std::tolower(c); });
 #ifdef __APPLE__
     SET_OPT(preferMetalRenderer, boolean);
 #endif
@@ -306,18 +269,18 @@ try { exp } catch (...) {}
     SET_STRINGOPT(customScript, customScript);
     SET_OPT(useScriptNames, boolean);
     SET_OPT(dumpAtlas, boolean);
-    
+
     fillStringVec(opts["preloadScript"], preloadScripts);
     fillStringVec(opts["RTP"], rtps);
     fillStringVec(opts["patches"], patches);
     fillStringVec(opts["fontSub"], fontSubs);
-    for (std::string & fontSub : fontSubs)
+    for (std::string& fontSub: fontSubs)
         std::transform(fontSub.begin(), fontSub.end(), fontSub.begin(),
-            [](unsigned char c) { return std::tolower(c); });
+                       [](unsigned char c) { return std::tolower(c); });
     fillStringVec(opts["rubyLoadpath"], rubyLoadpaths);
-    
-    auto &bnames = opts["bindingNames"].as_object();
-    
+
+    auto& bnames = opts["bindingNames"].as_object();
+
 #define BINDING_NAME(btn) kbActionNames.btn = bnames[#btn].as_string()
     BINDING_NAME(a);
     BINDING_NAME(b);
@@ -327,59 +290,60 @@ try { exp } catch (...) {}
     BINDING_NAME(z);
     BINDING_NAME(l);
     BINDING_NAME(r);
-    
+
     rgssVersion = clamp(rgssVersion, 0, 3);
     SE.sourceCount = clamp(SE.sourceCount, 1, 64);
     BGM.trackCount = clamp(BGM.trackCount, 1, 16);
-    
+
     // Determine whether to open a console window on... Windows
     winConsole = getEnvironmentBool("MKXPZ_WINDOWS_CONSOLE", editor.debug);
-    
+
 #ifdef __APPLE__
     // Determine whether to use the Metal renderer on macOS
     // Environment variable takes priority over the json setting
     preferMetalRenderer = isMetalSupported() && getEnvironmentBool("MKXPZ_MACOS_METAL", preferMetalRenderer);
 #endif
-    
+
     // Determine whether to allow manual selection of a game folder on startup
     // Only works on macOS atm, mainly used to test games located outside of the bundle.
     // The config is re-read after the window is already created, so some entries
     // may not take effect
     manualFolderSelect = getEnvironmentBool("MKXPZ_FOLDER_SELECT", false);
-    
+
     raw = optsJ;
 }
 
-static void setupScreenSize(Config &conf) {
-    if (conf.defScreenW <= 0)
-        conf.defScreenW = (conf.rgssVersion == 1 ? 640 : 544);
-    
-    if (conf.defScreenH <= 0)
-        conf.defScreenH = (conf.rgssVersion == 1 ? 480 : 416);
+static void setupScreenSize(Config& conf)
+{
+    if (conf.defScreenW <= 0) conf.defScreenW = (conf.rgssVersion == 1 ? 640 : 544);
+
+    if (conf.defScreenH <= 0) conf.defScreenH = (conf.rgssVersion == 1 ? 480 : 416);
 }
 
-bool Config::fontIsSolid(const char *fontName) const {
-    for (std::string solidfont : solidFonts)
+bool Config::fontIsSolid(const char* fontName) const
+{
+    for (std::string solidfont: solidFonts)
         if (!strcmp(solidfont.c_str(), fontName)) return true;
-    
+
     return false;
 }
 
-void Config::readGameINI() {
-    if (!customScript.empty()) {
+void Config::readGameINI()
+{
+    if (!customScript.empty())
+    {
         game.title = customScript.c_str();
-        
-        if (rgssVersion == 0)
-            rgssVersion = 1;
-        
+
+        if (rgssVersion == 0) rgssVersion = 1;
+
         setupScreenSize(*this);
-        
+
         return;
     }
-    
+
     std::string iniFileName(execName + ".ini");
     SDLRWStream iniFile(iniFileName.c_str(), "r");
-    
+
     bool convSuccess = false;
     if (iniFile)
     {
@@ -388,57 +352,54 @@ void Config::readGameINI() {
         {
             GUARD(game.title = ic.getStringProperty("Game", "Title"););
             GUARD(game.scripts = ic.getStringProperty("Game", "Scripts"););
-            
+
             strReplace(game.scripts, '\\', '/');
-            
-            if (game.title.empty()) {
-                Debug() << iniFileName + ": Could not find Game.Title";
-            }
-            
-            if (game.scripts.empty())
-                Debug() << iniFileName + ": Could not find Game.Scripts";
+
+            if (game.title.empty()) { Debug() << iniFileName + ": Could not find Game.Title"; }
+
+            if (game.scripts.empty()) Debug() << iniFileName + ": Could not find Game.Scripts";
         }
     }
     else
         Debug() << "Could not read" << iniFileName;
-    
-    try {
+
+    try
+    {
         game.title = Encoding::convertString(game.title);
         convSuccess = true;
     }
-    catch (const Exception &e) {
+    catch (const Exception& e)
+    {
         Debug() << iniFileName + ": Could not determine encoding of Game.Title";
     }
-    
-    if (game.title.empty() || !convSuccess)
-        game.title = "mkxp-z";
-    
-    if (dataPathOrg.empty())
-        dataPathOrg = ".";
-    
-    if (dataPathApp.empty())
-        dataPathApp = game.title;
-    
+
+    if (game.title.empty() || !convSuccess) game.title = "mkxp-z";
+
+    if (dataPathOrg.empty()) dataPathOrg = ".";
+
+    if (dataPathApp.empty()) dataPathApp = game.title;
+
     customDataPath = mkxp_fs::normalizePath(prefPath(dataPathOrg.c_str(), dataPathApp.c_str()).c_str(), 0, 1);
-    
-    if (rgssVersion == 0) {
+
+    if (rgssVersion == 0)
+    {
         /* Try to guess RGSS version based on Data/Scripts extension */
         rgssVersion = 1;
-        
-        if (!game.scripts.empty()) {
-            const char *p = &game.scripts[game.scripts.size()];
-            const char *head = &game.scripts[0];
-            
+
+        if (!game.scripts.empty())
+        {
+            const char* p = &game.scripts[game.scripts.size()];
+            const char* head = &game.scripts[0];
+
             while (--p != head)
-                if (*p == '.')
-                    break;
-            
+                if (*p == '.') break;
+
             if (!strcmp(p, ".rvdata"))
                 rgssVersion = 2;
             else if (!strcmp(p, ".rvdata2"))
                 rgssVersion = 3;
         }
     }
-    
+
     setupScreenSize(*this);
 }

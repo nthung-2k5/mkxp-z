@@ -20,197 +20,173 @@
 */
 
 #include "texpool.h"
-#include "exception.h"
-#include "sharedstate.h"
-#include "glstate.h"
 #include "boost-hash.h"
 #include "debugwriter.h"
+#include "exception.h"
+#include "glstate.h"
+#include "sharedstate.h"
 
-#include <list>
-#include <utility>
 #include <assert.h>
+#include <list>
 #include <string.h>
+#include <utility>
 
 typedef std::pair<uint16_t, uint16_t> Size;
 
-static uint32_t byteCount(Size &s)
-{
-	return s.first * s.second * 4;
-}
+static uint32_t byteCount(Size& s) { return s.first * s.second * 4; }
 
 struct CacheNode
 {
-	TEXFBO obj;
-	std::list<TEXFBO>::iterator prioIter;
+    TEXFBO obj;
+    std::list<TEXFBO>::iterator prioIter;
 
-	bool operator==(const CacheNode &o) const
-	{
-		return obj == o.obj;
-	}
+    bool operator==(const CacheNode& o) const { return obj == o.obj; }
 };
 
 typedef std::list<CacheNode> CNodeList;
 
 struct TexPoolPrivate
 {
-	/* Contains all cached TexFBOs, grouped by size */
-	BoostHash<Size, CNodeList> poolHash;
+    /* Contains all cached TexFBOs, grouped by size */
+    BoostHash<Size, CNodeList> poolHash;
 
-	/* Contains all cached TexFBOs, sorted by release time */
-	std::list<TEXFBO> priorityQueue;
+    /* Contains all cached TexFBOs, sorted by release time */
+    std::list<TEXFBO> priorityQueue;
 
-	/* Maximal allowed cache memory */
-	const uint32_t maxMemSize;
+    /* Maximal allowed cache memory */
+    const uint32_t maxMemSize;
 
-	/* Current amound of memory consumed by the cache */
-	uint32_t memSize;
+    /* Current amound of memory consumed by the cache */
+    uint32_t memSize;
 
-	/* Current amount of TexFBOs cached */
-	uint16_t objCount;
+    /* Current amount of TexFBOs cached */
+    uint16_t objCount;
 
-	/* Has this pool been disabled? */
-	bool disabled;
+    /* Has this pool been disabled? */
+    bool disabled;
 
-	TexPoolPrivate(uint32_t maxMemSize)
-	    : maxMemSize(maxMemSize),
-	      memSize(0),
-	      objCount(0),
-	      disabled(false)
-	{}
+    TexPoolPrivate(uint32_t maxMemSize): maxMemSize(maxMemSize), memSize(0), objCount(0), disabled(false) {}
 };
 
-TexPool::TexPool(uint32_t maxMemSize)
-{
-	p = new TexPoolPrivate(maxMemSize);
-}
+TexPool::TexPool(uint32_t maxMemSize) { p = new TexPoolPrivate(maxMemSize); }
 
 TexPool::~TexPool()
 {
-	std::list<TEXFBO>::iterator iter;
+    std::list<TEXFBO>::iterator iter;
 
-	for (iter = p->priorityQueue.begin();
-	     iter != p->priorityQueue.end();
-	     ++iter)
-	{
-		TEXFBO obj = *iter;
-		TEXFBO::fini(obj);
-		--p->objCount;
-	}
+    for (iter = p->priorityQueue.begin(); iter != p->priorityQueue.end(); ++iter)
+    {
+        TEXFBO obj = *iter;
+        TEXFBO::fini(obj);
+        --p->objCount;
+    }
 
-	assert(p->objCount == 0);
+    assert(p->objCount == 0);
 
-	delete p;
+    delete p;
 }
 
 TEXFBO TexPool::request(int width, int height)
 {
-	CacheNode cnode;
-	Size size(width, height);
+    CacheNode cnode;
+    Size size(width, height);
 
-	/* See if we can statisfy request from cache */
-	CNodeList &bucket = p->poolHash[size];
+    /* See if we can statisfy request from cache */
+    CNodeList& bucket = p->poolHash[size];
 
-	if (!bucket.empty())
-	{
-		/* Found one! */
-		cnode = bucket.back();
-		bucket.pop_back();
+    if (!bucket.empty())
+    {
+        /* Found one! */
+        cnode = bucket.back();
+        bucket.pop_back();
 
-		p->priorityQueue.erase(cnode.prioIter);
+        p->priorityQueue.erase(cnode.prioIter);
 
-		p->memSize -= byteCount(size);
-		--p->objCount;
+        p->memSize -= byteCount(size);
+        --p->objCount;
 
-//		Debug() << "TexPool: <?+> (" << width << height << ")";
+        //		Debug() << "TexPool: <?+> (" << width << height << ")";
 
-		return cnode.obj;
-	}
+        return cnode.obj;
+    }
 
-	int maxSize = glState.caps.maxTexSize;
-	if (width > maxSize || height > maxSize)
-		throw Exception(Exception::MKXPError,
-		                "Texture dimensions [%d, %d] exceed hardware capabilities",
-		                width, height);
+    int maxSize = glState.caps.maxTexSize;
+    if (width > maxSize || height > maxSize)
+        throw Exception(Exception::MKXPError, "Texture dimensions [%d, %d] exceed hardware capabilities", width,
+                        height);
 
-	/* Nope, create it instead */
-	TEXFBO::init(cnode.obj);
-	TEXFBO::allocEmpty(cnode.obj, width, height);
-	TEXFBO::linkFBO(cnode.obj);
+    /* Nope, create it instead */
+    TEXFBO::init(cnode.obj);
+    TEXFBO::allocEmpty(cnode.obj, width, height);
+    TEXFBO::linkFBO(cnode.obj);
 
-//	Debug() << "TexPool: <?-> (" << width << height << ")";
+    //	Debug() << "TexPool: <?-> (" << width << height << ")";
 
-	return cnode.obj;
+    return cnode.obj;
 }
 
-void TexPool::release(TEXFBO &obj)
+void TexPool::release(TEXFBO& obj)
 {
-	if (obj.tex == TEX::ID(0) || obj.fbo == FBO::ID(0))
-	{
-		TEXFBO::fini(obj);
-		return;
-	}
+    if (obj.tex == TEX::ID(0) || obj.fbo == FBO::ID(0))
+    {
+        TEXFBO::fini(obj);
+        return;
+    }
 
-	if (p->disabled)
-	{
-		/* If we're disabled, delete without caching */
-//		Debug() << "TexPool: <!#> (" << obj.width << obj.height << ")";
-		TEXFBO::fini(obj);
-		return;
-	}
+    if (p->disabled)
+    {
+        /* If we're disabled, delete without caching */
+        //		Debug() << "TexPool: <!#> (" << obj.width << obj.height << ")";
+        TEXFBO::fini(obj);
+        return;
+    }
 
-	Size size(obj.width, obj.height);
+    Size size(obj.width, obj.height);
 
-	uint32_t newMemSize = p->memSize + byteCount(size);
+    uint32_t newMemSize = p->memSize + byteCount(size);
 
-	/* If caching this object would spill over the allowed memory budget,
-	 * delete least used objects until we're good again */
-	while (newMemSize > p->maxMemSize)
-	{
-		if (p->objCount == 0)
-			break;
+    /* If caching this object would spill over the allowed memory budget,
+     * delete least used objects until we're good again */
+    while (newMemSize > p->maxMemSize)
+    {
+        if (p->objCount == 0) break;
 
-//		Debug() << "TexPool: <!~> Size:" << p->memSize;
+        //		Debug() << "TexPool: <!~> Size:" << p->memSize;
 
-		/* Retrieve object with lowest priority for deletion */
-		CacheNode last;
-		last.obj = p->priorityQueue.back();
-		Size removedSize(last.obj.width, last.obj.height);
+        /* Retrieve object with lowest priority for deletion */
+        CacheNode last;
+        last.obj = p->priorityQueue.back();
+        Size removedSize(last.obj.width, last.obj.height);
 
-		CNodeList &bucket = p->poolHash[removedSize];
+        CNodeList& bucket = p->poolHash[removedSize];
 
-		std::list<CacheNode>::iterator toRemove =
-		        std::find(bucket.begin(), bucket.end(), last);
-		assert(toRemove != bucket.end());
-		bucket.erase(toRemove);
+        std::list<CacheNode>::iterator toRemove = std::find(bucket.begin(), bucket.end(), last);
+        assert(toRemove != bucket.end());
+        bucket.erase(toRemove);
 
-		p->priorityQueue.pop_back();
+        p->priorityQueue.pop_back();
 
-		TEXFBO::fini(last.obj);
+        TEXFBO::fini(last.obj);
 
-		newMemSize -= byteCount(removedSize);
-		--p->objCount;
+        newMemSize -= byteCount(removedSize);
+        --p->objCount;
 
-//		Debug() << "TexPool: <!-> (" << last.obj.width << last.obj.height << ")";
-	}
+        //		Debug() << "TexPool: <!-> (" << last.obj.width << last.obj.height << ")";
+    }
 
-	p->memSize = newMemSize;
+    p->memSize = newMemSize;
 
-	/* Retain object */
-	p->priorityQueue.push_front(obj);
-	CacheNode cnode;
-	cnode.obj = obj;
-	cnode.prioIter = p->priorityQueue.begin();
-	CNodeList &bucket = p->poolHash[size];
-	bucket.push_back(cnode);
+    /* Retain object */
+    p->priorityQueue.push_front(obj);
+    CacheNode cnode;
+    cnode.obj = obj;
+    cnode.prioIter = p->priorityQueue.begin();
+    CNodeList& bucket = p->poolHash[size];
+    bucket.push_back(cnode);
 
-	++p->objCount;
+    ++p->objCount;
 
-//	Debug() << "TexPool: <!+> (" << obj.width << obj.height << ") Current size:" << p->memSize;
+    //	Debug() << "TexPool: <!+> (" << obj.width << obj.height << ") Current size:" << p->memSize;
 }
 
-void TexPool::disable()
-{
-	p->disabled = true;
-}
-
-
+void TexPool::disable() { p->disabled = true; }

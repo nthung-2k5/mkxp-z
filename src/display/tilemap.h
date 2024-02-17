@@ -35,53 +35,55 @@ struct Tone;
 
 struct TilemapPrivate;
 
-class Tilemap : public Disposable
+class Tilemap: public Disposable
 {
-public:
-	class Autotiles
-	{
-	public:
-		void set(int i, Bitmap *bitmap);
-		Bitmap *get(int i) const;
+  public:
+    class Autotiles
+    {
+      public:
+        void set(int i, Bitmap* bitmap);
+        Bitmap* get(int i) const;
 
-	private:
-		Autotiles() {}
-		~Autotiles() {}
+      private:
+        Autotiles() {}
 
-		TilemapPrivate *p;
-		friend class Tilemap;
-		friend struct TilemapPrivate;
-	};
+        ~Autotiles() {}
 
-	Tilemap(Viewport *viewport = 0);
-	~Tilemap();
+        TilemapPrivate* p;
+        friend class Tilemap;
+        friend struct TilemapPrivate;
+    };
 
-	void update();
+    Tilemap(Viewport* viewport = 0);
+    ~Tilemap();
 
-	Autotiles &getAutotiles();
-	Viewport *getViewport() const;
+    void update();
 
-	DECL_ATTR( Tileset,    Bitmap*   )
-	DECL_ATTR( MapData,    Table*    )
-	DECL_ATTR( FlashData,  Table*    )
-	DECL_ATTR( Priorities, Table*    )
-	DECL_ATTR( Visible,    bool      )
-	DECL_ATTR( OX,         int       )
-	DECL_ATTR( OY,         int       )
+    Autotiles& getAutotiles();
+    Viewport* getViewport() const;
 
-	DECL_ATTR( Opacity,   int     )
-	DECL_ATTR( BlendType, int     )
-	DECL_ATTR( Color,     Color&  )
-	DECL_ATTR( Tone,      Tone&   )
+    DECL_ATTR(Tileset, Bitmap*)
+    DECL_ATTR(MapData, Table*)
+    DECL_ATTR(FlashData, Table*)
+    DECL_ATTR(Priorities, Table*)
+    DECL_ATTR(Visible, bool)
+    DECL_ATTR(OX, int)
+    DECL_ATTR(OY, int)
 
-	void initDynAttribs();
+    DECL_ATTR(Opacity, int)
+    DECL_ATTR(BlendType, int)
+    DECL_ATTR(Color, Color&)
+    DECL_ATTR(Tone, Tone&)
 
-private:
-	TilemapPrivate *p;
-	Autotiles atProxy;
+    void initDynAttribs();
 
-	void releaseResources();
-	const char *klassName() const { return "tilemap"; }
+  private:
+    TilemapPrivate* p;
+    Autotiles atProxy;
+
+    void releaseResources();
+
+    const char* klassName() const { return "tilemap"; }
 };
 
 #endif // TILEMAP_H

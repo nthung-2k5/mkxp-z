@@ -22,30 +22,28 @@
 #ifndef SERIALIZABLEBINDING_H
 #define SERIALIZABLEBINDING_H
 
-#include "serializable.h"
 #include "binding-util.h"
 #include "exception.h"
+#include "serializable.h"
 
-template<class C>
-static VALUE
-serializableDump(int, VALUE *, VALUE self)
+template <class C>
+static VALUE serializableDump(int, VALUE*, VALUE self)
 {
-	Serializable *s = getPrivateData<C>(self);
+    Serializable* s = getPrivateData<C>(self);
 
-	int dataSize = s->serialSize();
+    int dataSize = s->serialSize();
 
-	VALUE data = rb_str_new(0, dataSize);
+    VALUE data = rb_str_new(0, dataSize);
 
-	GUARD_EXC( s->serialize(RSTRING_PTR(data)); );
+    GUARD_EXC(s->serialize(RSTRING_PTR(data)););
 
-	return data;
+    return data;
 }
 
-template<class C>
-void
-serializableBindingInit(VALUE klass)
+template <class C>
+void serializableBindingInit(VALUE klass)
 {
-	_rb_define_method(klass, "_dump", serializableDump<C>);
+    _rb_define_method(klass, "_dump", serializableDump<C>);
 }
 
 #endif // SERIALIZABLEBINDING_H

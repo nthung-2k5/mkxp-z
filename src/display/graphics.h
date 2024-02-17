@@ -35,80 +35,77 @@ struct Movie;
 
 class Graphics
 {
-public:
+  public:
     double getDelta();
     double lastUpdate();
-    
-	void update(bool checkForShutdown = true);
-	void freeze();
-	void transition(int duration = 8,
-	                const char *filename = "",
-	                int vague = 40);
-	void frameReset();
 
-	DECL_ATTR( FrameRate,  int )
-	DECL_ATTR( FrameCount, int )
-	DECL_ATTR( Brightness, int )
+    void update(bool checkForShutdown = true);
+    void freeze();
+    void transition(int duration = 8, const char* filename = "", int vague = 40);
+    void frameReset();
 
-	void wait(int duration);
-	void fadeout(int duration);
-	void fadein(int duration);
+    DECL_ATTR(FrameRate, int)
+    DECL_ATTR(FrameCount, int)
+    DECL_ATTR(Brightness, int)
 
-	Bitmap *snapToBitmap();
+    void wait(int duration);
+    void fadeout(int duration);
+    void fadein(int duration);
 
-	int width() const;
-	int height() const;
-	int widthHires() const;
-	int heightHires() const;
-	bool isPingPongFramebufferActive() const;
+    Bitmap* snapToBitmap();
+
+    int width() const;
+    int height() const;
+    int widthHires() const;
+    int heightHires() const;
+    bool isPingPongFramebufferActive() const;
     int displayContentWidth() const;
     int displayContentHeight() const;
     int displayWidth() const;
     int displayHeight() const;
-	void resizeScreen(int width, int height);
-    void resizeWindow(int width, int height, bool center=false);
-	void drawMovieFrame(const THEORAPLAY_VideoFrame* video, Bitmap *videoBitmap);
-	bool updateMovieInput(Movie *movie);
-	void playMovie(const char *filename, int volume, bool skippable);
-	void screenshot(const char *filename);
+    void resizeScreen(int width, int height);
+    void resizeWindow(int width, int height, bool center = false);
+    void drawMovieFrame(const THEORAPLAY_VideoFrame* video, Bitmap* videoBitmap);
+    bool updateMovieInput(Movie* movie);
+    void playMovie(const char* filename, int volume, bool skippable);
+    void screenshot(const char* filename);
 
-	void reset();
+    void reset();
     void center();
 
     /* Non-standard extension */
-    DECL_ATTR( Fullscreen, bool )
-    DECL_ATTR( ShowCursor, bool )
-    DECL_ATTR( Scale,    double )
-    DECL_ATTR( Frameskip, bool )
-    DECL_ATTR( FixedAspectRatio, bool )
-    DECL_ATTR( SmoothScaling, int )
-    DECL_ATTR( IntegerScaling, bool )
-    DECL_ATTR( LastMileScaling, bool )
-    DECL_ATTR( Threadsafe, bool )
+    DECL_ATTR(Fullscreen, bool)
+    DECL_ATTR(ShowCursor, bool)
+    DECL_ATTR(Scale, double)
+    DECL_ATTR(Frameskip, bool)
+    DECL_ATTR(FixedAspectRatio, bool)
+    DECL_ATTR(SmoothScaling, int)
+    DECL_ATTR(IntegerScaling, bool)
+    DECL_ATTR(LastMileScaling, bool)
+    DECL_ATTR(Threadsafe, bool)
     double averageFrameRate();
 
-	/* <internal> */
-	Scene *getScreen() const;
-	/* Repaint screen with static image until exitCond
-	 * is set. Observes reset flag on top of shutdown
-	 * if "checkReset" */
-	void repaintWait(const AtomicFlag &exitCond,
-	                 bool checkReset = true);
-    
+    /* <internal> */
+    Scene* getScreen() const;
+    /* Repaint screen with static image until exitCond
+     * is set. Observes reset flag on top of shutdown
+     * if "checkReset" */
+    void repaintWait(const AtomicFlag& exitCond, bool checkReset = true);
+
     void lock(bool force = false);
     void unlock(bool force = false);
 
-private:
-	Graphics(RGSSThreadData *data);
-	~Graphics();
+  private:
+    Graphics(RGSSThreadData* data);
+    ~Graphics();
 
-	void addDisposable(Disposable *);
-	void remDisposable(Disposable *);
+    void addDisposable(Disposable*);
+    void remDisposable(Disposable*);
 
-	friend struct SharedStatePrivate;
-	friend class Disposable;
+    friend struct SharedStatePrivate;
+    friend class Disposable;
 
-	GraphicsPrivate *p;
+    GraphicsPrivate* p;
 };
 
 #define GFX_LOCK shState->graphics().lock()

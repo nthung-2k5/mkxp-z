@@ -37,48 +37,37 @@ struct RGSSThreadData;
 
 class Audio
 {
-public:
-	void bgmPlay(const char *filename,
-	             int volume = 100,
-	             int pitch = 100,
-	             float pos = 0,
-                 int track = -127);
-	void bgmStop(int track = -127);
-	void bgmFade(int time, int track = -127);
+  public:
+    void bgmPlay(const char* filename, int volume = 100, int pitch = 100, float pos = 0, int track = -127);
+    void bgmStop(int track = -127);
+    void bgmFade(int time, int track = -127);
     int bgmGetVolume(int track = -127);
     void bgmSetVolume(int volume = 100, int track = -127);
 
-	void bgsPlay(const char *filename,
-	             int volume = 100,
-	             int pitch = 100,
-	             float pos = 0);
-	void bgsStop();
-	void bgsFade(int time);
+    void bgsPlay(const char* filename, int volume = 100, int pitch = 100, float pos = 0);
+    void bgsStop();
+    void bgsFade(int time);
 
-	void mePlay(const char *filename,
-	            int volume = 100,
-	            int pitch = 100);
-	void meStop();
-	void meFade(int time);
+    void mePlay(const char* filename, int volume = 100, int pitch = 100);
+    void meStop();
+    void meFade(int time);
 
-	void sePlay(const char *filename,
-	            int volume = 100,
-	            int pitch = 100);
-	void seStop();
+    void sePlay(const char* filename, int volume = 100, int pitch = 100);
+    void seStop();
 
-	void setupMidi();
-	float bgmPos(int track = 0);
-	float bgsPos();
+    void setupMidi();
+    float bgmPos(int track = 0);
+    float bgsPos();
 
-	void reset();
+    void reset();
 
-private:
-	Audio(RGSSThreadData &rtData);
-	~Audio();
+  private:
+    Audio(RGSSThreadData& rtData);
+    ~Audio();
 
-	friend struct SharedStatePrivate;
+    friend struct SharedStatePrivate;
 
-	AudioPrivate *p;
+    AudioPrivate* p;
 };
 
 #endif // AUDIO_H

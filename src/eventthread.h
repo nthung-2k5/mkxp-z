@@ -22,11 +22,11 @@
 #ifndef EVENTTHREAD_H
 #define EVENTTHREAD_H
 
-#include <SDL_scancode.h>
-#include <SDL_mouse.h>
-#include <SDL_mutex.h>
 #include <SDL_atomic.h>
 #include <SDL_gamecontroller.h>
+#include <SDL_mouse.h>
+#include <SDL_mutex.h>
+#include <SDL_scancode.h>
 
 #include <string>
 
@@ -34,8 +34,8 @@
 
 #include "config.h"
 #include "etc-internal.h"
-#include "sdl-util.h"
 #include "keybindings.h"
+#include "sdl-util.h"
 
 struct RGSSThreadData;
 typedef struct MKXPZ_ALCDEVICE ALCdevice;
@@ -46,247 +46,227 @@ union SDL_Event;
 
 class EventThread
 {
-public:
-    
-    struct ControllerState {
+  public:
+    struct ControllerState
+    {
         int axes[SDL_CONTROLLER_AXIS_MAX];
         bool buttons[SDL_CONTROLLER_BUTTON_MAX];
     };
 
-	struct MouseState
-	{
-		int x, y;
-		bool inWindow;
-		bool buttons[32];
-	};
+    struct MouseState
+    {
+        int x, y;
+        bool inWindow;
+        bool buttons[32];
+    };
 
-	struct FingerState
-	{
-		bool down;
-		int x, y;
-	};
+    struct FingerState
+    {
+        bool down;
+        int x, y;
+    };
 
-	struct TouchState
-	{
-		FingerState fingers[MAX_FINGERS];
-	};
+    struct TouchState
+    {
+        FingerState fingers[MAX_FINGERS];
+    };
 
-	static uint8_t keyStates[SDL_NUM_SCANCODES];
+    static uint8_t keyStates[SDL_NUM_SCANCODES];
     static ControllerState controllerState;
-	static MouseState mouseState;
-	static TouchState touchState;
+    static MouseState mouseState;
+    static TouchState touchState;
     static SDL_atomic_t verticalScrollDistance;
-    
+
     std::string textInputBuffer;
     void lockText(bool lock);
-    
 
-	static bool allocUserEvents();
+    static bool allocUserEvents();
 
-	EventThread();
+    EventThread();
     ~EventThread();
 
-	void process(RGSSThreadData &rtData);
-	void cleanup();
+    void process(RGSSThreadData& rtData);
+    void cleanup();
 
-	/* Called from RGSS thread */
-	void requestFullscreenMode(bool mode);
-	void requestWindowResize(int width, int height);
+    /* Called from RGSS thread */
+    void requestFullscreenMode(bool mode);
+    void requestWindowResize(int width, int height);
     void requestWindowReposition(int x, int y);
     void requestWindowCenter();
-    void requestWindowRename(const char *title);
-	void requestShowCursor(bool mode);
-    
+    void requestWindowRename(const char* title);
+    void requestShowCursor(bool mode);
+
     void requestTextInputMode(bool mode);
-    
+
     void requestSettingsMenu();
 
-	void requestTerminate();
+    void requestTerminate();
 
-	bool getFullscreen() const;
-	bool getShowCursor() const;
+    bool getFullscreen() const;
+    bool getShowCursor() const;
     bool getControllerConnected() const;
-    
-    SDL_GameController *controller() const;
 
-	void showMessageBox(const char *body, int flags = 0);
+    SDL_GameController* controller() const;
 
-	/* RGSS thread calls this once per frame */
-	void notifyFrame();
+    void showMessageBox(const char* body, int flags = 0);
 
-	/* Called on game screen (size / offset) changes */
-	void notifyGameScreenChange(const SDL_Rect &screen);
+    /* RGSS thread calls this once per frame */
+    void notifyFrame();
 
-private:
-	static int eventFilter(void *, SDL_Event*);
+    /* Called on game screen (size / offset) changes */
+    void notifyGameScreenChange(const SDL_Rect& screen);
 
-	void resetInputStates();
-	void setFullscreen(SDL_Window *, bool mode);
-	void updateCursorState(bool inWindow,
-	                       const SDL_Rect &screen);
-	void cursorTimer();
+  private:
+    static int eventFilter(void*, SDL_Event*);
 
-	bool fullscreen;
-	bool showCursor;
-    
-    SDL_GameController *ctrl;
-    
-	AtomicFlag msgBoxDone;
-    
-    SDL_mutex *textInputLock;
+    void resetInputStates();
+    void setFullscreen(SDL_Window*, bool mode);
+    void updateCursorState(bool inWindow, const SDL_Rect& screen);
+    void cursorTimer();
 
-	struct
-	{
-		AtomicFlag sendUpdates;
-	} fps;
+    bool fullscreen;
+    bool showCursor;
+
+    SDL_GameController* ctrl;
+
+    AtomicFlag msgBoxDone;
+
+    SDL_mutex* textInputLock;
+
+    struct
+    {
+        AtomicFlag sendUpdates;
+    } fps;
 };
 
 /* Used to asynchronously inform the RGSS thread
  * about certain value changes */
-template<typename T>
+template <typename T>
 struct UnidirMessage
 {
-	UnidirMessage()
-	    : mutex(SDL_CreateMutex()),
-	      current(T())
-	{}
+    UnidirMessage(): mutex(SDL_CreateMutex()), current(T()) {}
 
-	~UnidirMessage()
-	{
-		SDL_DestroyMutex(mutex);
-	}
+    ~UnidirMessage() { SDL_DestroyMutex(mutex); }
 
-	/* Done from the sending side */
-	void post(const T &value)
-	{
-		SDL_LockMutex(mutex);
+    /* Done from the sending side */
+    void post(const T& value)
+    {
+        SDL_LockMutex(mutex);
 
-		changed.set();
-		current = value;
+        changed.set();
+        current = value;
 
-		SDL_UnlockMutex(mutex);
-	}
+        SDL_UnlockMutex(mutex);
+    }
 
-	/* Done from the receiving side */
-	bool poll(T &out) const
-	{
-		if (!changed)
-			return false;
+    /* Done from the receiving side */
+    bool poll(T& out) const
+    {
+        if (!changed) return false;
 
-		SDL_LockMutex(mutex);
+        SDL_LockMutex(mutex);
 
-		out = current;
-		changed.clear();
+        out = current;
+        changed.clear();
 
-		SDL_UnlockMutex(mutex);
+        SDL_UnlockMutex(mutex);
 
-		return true;
-	}
+        return true;
+    }
 
-	/* Done from either */
-	void get(T &out) const
-	{
-		SDL_LockMutex(mutex);
-		out = current;
-		SDL_UnlockMutex(mutex);
-	}
+    /* Done from either */
+    void get(T& out) const
+    {
+        SDL_LockMutex(mutex);
+        out = current;
+        SDL_UnlockMutex(mutex);
+    }
 
-private:
-	SDL_mutex *mutex;
-	mutable AtomicFlag changed;
-	T current;
+  private:
+    SDL_mutex* mutex;
+    mutable AtomicFlag changed;
+    T current;
 };
 
 struct SyncPoint
 {
-	/* Used by eventFilter to control sleep/wakeup */
-	void haltThreads();
-	void resumeThreads();
+    /* Used by eventFilter to control sleep/wakeup */
+    void haltThreads();
+    void resumeThreads();
 
-	/* Used by RGSS thread */
-	bool mainSyncLocked();
-	void waitMainSync();
+    /* Used by RGSS thread */
+    bool mainSyncLocked();
+    void waitMainSync();
 
-	/* Used by secondary (audio) threads */
-	void passSecondarySync();
+    /* Used by secondary (audio) threads */
+    void passSecondarySync();
 
-private:
-	struct Util
-	{
-		Util();
-		~Util();
+  private:
+    struct Util
+    {
+        Util();
+        ~Util();
 
-		void lock();
-		void unlock(bool multi);
-		void waitForUnlock();
+        void lock();
+        void unlock(bool multi);
+        void waitForUnlock();
 
-		AtomicFlag locked;
-		SDL_mutex *mut;
-		SDL_cond *cond;
-	};
+        AtomicFlag locked;
+        SDL_mutex* mut;
+        SDL_cond* cond;
+    };
 
-	Util mainSync;
-	Util reply;
-	Util secondSync;
+    Util mainSync;
+    Util reply;
+    Util secondSync;
 };
 
 struct RGSSThreadData
 {
-	/* Main thread sets this to request RGSS thread to terminate */
-	AtomicFlag rqTerm;
-	/* In response, RGSS thread sets this to confirm
-	 * that it received the request and isn't stuck */
-	AtomicFlag rqTermAck;
+    /* Main thread sets this to request RGSS thread to terminate */
+    AtomicFlag rqTerm;
+    /* In response, RGSS thread sets this to confirm
+     * that it received the request and isn't stuck */
+    AtomicFlag rqTermAck;
 
-	/* Set when F12 is pressed */
-	AtomicFlag rqReset;
+    /* Set when F12 is pressed */
+    AtomicFlag rqReset;
 
-	/* Set when F12 is released */
-	AtomicFlag rqResetFinish;
-    
+    /* Set when F12 is released */
+    AtomicFlag rqResetFinish;
+
     // Set when window is being adjusted (resize, reposition)
     AtomicFlag rqWindowAdjust;
 
-	EventThread *ethread;
-	UnidirMessage<Vec2i> windowSizeMsg;
+    EventThread* ethread;
+    UnidirMessage<Vec2i> windowSizeMsg;
     UnidirMessage<Vec2i> drawableSizeMsg;
-	UnidirMessage<BDescVec> bindingUpdateMsg;
-	SyncPoint syncPoint;
+    UnidirMessage<BDescVec> bindingUpdateMsg;
+    SyncPoint syncPoint;
 
-	const char *argv0;
+    const char* argv0;
 
-	SDL_Window *window;
-	ALCdevice *alcDev;
-    
+    SDL_Window* window;
+    ALCdevice* alcDev;
+
     SDL_GLContext glContext;
 
-	Vec2 sizeResoRatio;
-	Vec2i screenOffset;
+    Vec2 sizeResoRatio;
+    Vec2i screenOffset;
     int scale;
-	const int refreshRate;
+    const int refreshRate;
 
-	Config config;
+    Config config;
 
-	std::string rgssErrorMsg;
+    std::string rgssErrorMsg;
 
-	RGSSThreadData(EventThread *ethread,
-	               const char *argv0,
-	               SDL_Window *window,
-	               ALCdevice *alcDev,
-	               int refreshRate,
-                   int scalingFactor,
-	               const Config& newconf,
-                   SDL_GLContext ctx)
-	    : ethread(ethread),
-	      argv0(argv0),
-	      window(window),
-	      alcDev(alcDev),
-	      sizeResoRatio(1, 1),
-	      refreshRate(refreshRate),
-          scale(scalingFactor),
-	      config(newconf),
-          glContext(ctx)
-	{}
+    RGSSThreadData(EventThread* ethread, const char* argv0, SDL_Window* window, ALCdevice* alcDev, int refreshRate,
+                   int scalingFactor, const Config& newconf, SDL_GLContext ctx):
+        ethread(ethread),
+        argv0(argv0), window(window), alcDev(alcDev), sizeResoRatio(1, 1), refreshRate(refreshRate),
+        scale(scalingFactor), config(newconf), glContext(ctx)
+    {
+    }
 };
 
 #endif // EVENTTHREAD_H

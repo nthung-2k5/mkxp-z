@@ -6,41 +6,43 @@
 
 class INIConfiguration
 {
-	class Section
-	{
-		friend class INIConfiguration;
+    class Section
+    {
+        friend class INIConfiguration;
 
-		struct Property
-		{
-			std::string m_Name;
-			std::string m_Value;
-		};
+        struct Property
+        {
+            std::string m_Name;
+            std::string m_Value;
+        };
 
-		typedef std::map<std::string, Property> property_map;
-	public:
-		Section (const Section& s) = default;
-		Section (Section&& s) = default;
+        typedef std::map<std::string, Property> property_map;
 
-		bool getStringProperty (const std::string& name, std::string& outPropStr) const;
+      public:
+        Section(const Section& s) = default;
+        Section(Section&& s) = default;
 
-	private:
-		explicit Section (const std::string& name);
+        bool getStringProperty(const std::string& name, std::string& outPropStr) const;
 
-		std::string m_Name;
-		property_map m_PropertyMap;
-	};
+      private:
+        explicit Section(const std::string& name);
 
-	typedef std::map<std::string, Section> section_map;
-public:
-	bool load (std::istream& inStream);
+        std::string m_Name;
+        property_map m_PropertyMap;
+    };
 
-	std::string getStringProperty(const std::string& sname, const std::string& name, const std::string& def = "") const;
+    typedef std::map<std::string, Section> section_map;
 
-protected:
-	void addProperty (const std::string& sname, const std::string& name, const std::string& val);
+  public:
+    bool load(std::istream& inStream);
 
-private:
-	section_map m_SectionMap;
+    std::string getStringProperty(const std::string& sname, const std::string& name, const std::string& def = "") const;
+
+  protected:
+    void addProperty(const std::string& sname, const std::string& name, const std::string& val);
+
+  private:
+    section_map m_SectionMap;
 };
 
 #endif // INICONFIG_H

@@ -8,45 +8,49 @@
 #ifndef net_h
 #define net_h
 
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
-namespace mkxp_net {
+namespace mkxp_net
+{
 
-typedef std::unordered_map<std::string, std::string> StringMap;
+    typedef std::unordered_map<std::string, std::string> StringMap;
 
-class HTTPResponse {
-public:
-    int status();
-    std::string &body();
-    StringMap &headers();
-    ~HTTPResponse();
-    
-private:
-    int _status;
-    std::string _body;
-    StringMap _headers;
-    HTTPResponse();
-    
-    friend class HTTPRequest;
-};
+    class HTTPResponse
+    {
+      public:
+        int status();
+        std::string& body();
+        StringMap& headers();
+        ~HTTPResponse();
 
-class HTTPRequest {
-public:
-    HTTPRequest(const char *dest, bool follow_redirects = true);
-    ~HTTPRequest();
-    
-    StringMap &headers();
-    
-    std::string destination;
-    
-    HTTPResponse get();
-    HTTPResponse post(StringMap &postData);
-    HTTPResponse post(const char *body, const char *content_type);
-private:
-    StringMap _headers;
-    bool follow_location;
-};
-}
+      private:
+        int _status;
+        std::string _body;
+        StringMap _headers;
+        HTTPResponse();
+
+        friend class HTTPRequest;
+    };
+
+    class HTTPRequest
+    {
+      public:
+        HTTPRequest(const char* dest, bool follow_redirects = true);
+        ~HTTPRequest();
+
+        StringMap& headers();
+
+        std::string destination;
+
+        HTTPResponse get();
+        HTTPResponse post(StringMap& postData);
+        HTTPResponse post(const char* body, const char* content_type);
+
+      private:
+        StringMap _headers;
+        bool follow_location;
+    };
+} // namespace mkxp_net
 
 #endif /* net_h */

@@ -22,9 +22,9 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include <unordered_map>
 #include <SDL_gamecontroller.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 extern std::unordered_map<int, int> vKeyToScancode;
@@ -36,93 +36,110 @@ struct RGSSThreadData;
 
 class Input
 {
-public:
-	enum ButtonCode
-	{
-		None = 0,
+  public:
+    enum ButtonCode
+    {
+        None = 0,
 
-		Down = 2, Left = 4, Right = 6, Up = 8,
+        Down = 2,
+        Left = 4,
+        Right = 6,
+        Up = 8,
 
-		A = 11, B = 12, C = 13,
-		X = 14, Y = 15, Z = 16,
-		L = 17, R = 18,
+        A = 11,
+        B = 12,
+        C = 13,
+        X = 14,
+        Y = 15,
+        Z = 16,
+        L = 17,
+        R = 18,
 
-		Shift = 21, Ctrl = 22, Alt = 23,
+        Shift = 21,
+        Ctrl = 22,
+        Alt = 23,
 
-		F5 = 25, F6 = 26, F7 = 27, F8 = 28, F9 = 29,
+        F5 = 25,
+        F6 = 26,
+        F7 = 27,
+        F8 = 28,
+        F9 = 29,
 
-		/* Non-standard extensions */
-		MouseLeft = 38, MouseMiddle = 39, MouseRight = 40,
-        MouseX1 = 41, MouseX2 = 42
-	};
-    
+        /* Non-standard extensions */
+        MouseLeft = 38,
+        MouseMiddle = 39,
+        MouseRight = 40,
+        MouseX1 = 41,
+        MouseX2 = 42
+    };
+
     void recalcRepeat(unsigned int fps);
 
     double getDelta();
-	void update();
-    
+    void update();
+
     std::vector<std::string> getBindings(ButtonCode code);
-    
-	bool isPressed(int button);
-	bool isTriggered(int button);
-	bool isRepeated(int button);
+
+    bool isPressed(int button);
+    bool isTriggered(int button);
+    bool isRepeated(int button);
     bool isReleased(int button);
     unsigned int count(int button);
     double repeatTime(int button);
-    
+
     bool isPressedEx(int code, bool isVKey);
     bool isTriggeredEx(int code, bool isVKey);
     bool isRepeatedEx(int code, bool isVKey);
     bool isReleasedEx(int code, bool isVKey);
     unsigned int repeatcount(int code, bool isVKey);
     double repeatTimeEx(int code, bool isVKey);
-    
+
     bool controllerIsPressedEx(int button);
     bool controllerIsTriggeredEx(int button);
     bool controllerIsRepeatedEx(int button);
     bool controllerIsReleasedEx(int button);
     unsigned int controllerRepeatcount(int button);
     double controllerRepeatTimeEx(int button);
-    
-    uint8_t *rawKeyStates();
+
+    uint8_t* rawKeyStates();
     unsigned int rawKeyStatesLength();
-    uint8_t *rawButtonStates();
+    uint8_t* rawButtonStates();
     unsigned int rawButtonStatesLength();
-    int16_t *rawAxes();
+    int16_t* rawAxes();
     unsigned int rawAxesLength();
-    
+
     short getControllerAxisValue(SDL_GameControllerAxis axis);
 
-	int dir4Value();
-	int dir8Value();
+    int dir4Value();
+    int dir8Value();
 
-	int mouseX();
-	int mouseY();
+    int mouseX();
+    int mouseY();
     int scrollV();
     bool mouseInWindow();
-    
+
     bool getControllerConnected();
-    const char *getControllerName();
+    const char* getControllerName();
     int getControllerPowerLevel();
-    
+
     bool getTextInputMode();
     void setTextInputMode(bool mode);
-    const char *getText();
+    const char* getText();
     void clearText();
-    
-    char *getClipboardText();
-    void setClipboardText(char *text);
-    
-    const char *getAxisName(SDL_GameControllerAxis axis);
-    const char *getButtonName(SDL_GameControllerButton button);
 
-private:
-	Input(const RGSSThreadData &rtData);
-	~Input();
+    char* getClipboardText();
+    void setClipboardText(char* text);
 
-	friend struct SharedStatePrivate;
+    const char* getAxisName(SDL_GameControllerAxis axis);
+    const char* getButtonName(SDL_GameControllerButton button);
 
-	InputPrivate *p;
+  private:
+    Input(const RGSSThreadData& rtData);
+    ~Input();
+
+    friend struct SharedStatePrivate;
+
+    InputPrivate* p;
 };
 
 #endif // INPUT_H

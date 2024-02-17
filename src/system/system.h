@@ -29,23 +29,24 @@
 
 namespace systemImpl
 {
-	enum WineHostType {
-		Windows,
-		Linux,
-		Mac
-	};
+    enum WineHostType
+    {
+        Windows,
+        Linux,
+        Mac
+    };
 
-	std::string getSystemLanguage();
-	std::string getUserName();
-	int getScalingFactor();
+    std::string getSystemLanguage();
+    std::string getUserName();
+    int getScalingFactor();
 
-	bool isWine();
-	bool isRosetta();
-	WineHostType getRealHostType();
-}
+    bool isWine();
+    bool isRosetta();
+    WineHostType getRealHostType();
+} // namespace systemImpl
 
 #ifdef MKXPZ_BUILD_XCODE
-std::string getPlistValue(const char *key);
+std::string getPlistValue(const char* key);
 void openSettingsWindow();
 bool isMetalSupported();
 #endif

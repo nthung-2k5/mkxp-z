@@ -24,86 +24,82 @@
 
 #include "input.h"
 
-#include <SDL_scancode.h>
 #include <SDL_gamecontroller.h>
-#include <stdint.h>
+#include <SDL_scancode.h>
 #include <assert.h>
+#include <stdint.h>
 #include <vector>
 
 enum AxisDir
 {
-	Negative,
-	Positive
+    Negative,
+    Positive
 };
 
 enum SourceType
 {
-	Invalid,
-	Key,
+    Invalid,
+    Key,
     CButton,
     CAxis
 };
 
 struct SourceDesc
 {
-	SourceType type;
+    SourceType type;
 
-	union Data
-	{
-		/* Keyboard scancode */
-		SDL_Scancode scan;
-		/* Joystick button index */
-		SDL_GameControllerButton cb;
-		struct
-		{
-			/* Joystick axis index */
-			SDL_GameControllerAxis axis;
-			/* Joystick axis direction */
-			AxisDir dir;
-		} ca;
-	} d;
+    union Data {
+        /* Keyboard scancode */
+        SDL_Scancode scan;
+        /* Joystick button index */
+        SDL_GameControllerButton cb;
 
-	bool operator==(const SourceDesc &o) const
-	{
-		if (type != o.type)
-			return false;
+        struct
+        {
+            /* Joystick axis index */
+            SDL_GameControllerAxis axis;
+            /* Joystick axis direction */
+            AxisDir dir;
+        } ca;
+    } d;
 
-		switch (type)
-		{
-		case Invalid:
-			return true;
-		case Key:
-			return d.scan == o.d.scan;
+    bool operator==(const SourceDesc& o) const
+    {
+        if (type != o.type) return false;
+
+        switch (type)
+        {
+        case Invalid:
+            return true;
+        case Key:
+            return d.scan == o.d.scan;
         case CButton:
             return d.cb == o.d.cb;
-		case CAxis:
-			return (d.ca.axis == o.d.ca.axis) && (d.ca.dir == o.d.ca.dir);
-		default:
-			assert(!"unreachable");
-			return false;
-		}
-	}
+        case CAxis:
+            return (d.ca.axis == o.d.ca.axis) && (d.ca.dir == o.d.ca.dir);
+        default:
+            assert(!"unreachable");
+            return false;
+        }
+    }
 
-	bool operator!=(const SourceDesc &o) const
-	{
-		return !(*this == o);
-	}
+    bool operator!=(const SourceDesc& o) const { return !(*this == o); }
 };
 
 #define JAXIS_THRESHOLD 0x4000
 
 struct BindingDesc
 {
-	SourceDesc src;
-	Input::ButtonCode target;
+    SourceDesc src;
+    Input::ButtonCode target;
 };
 
 typedef std::vector<BindingDesc> BDescVec;
 struct Config;
 
-BDescVec genDefaultBindings(const Config &conf);
+BDescVec genDefaultBindings(const Config& conf);
 
-void storeBindings(const BDescVec &d, const Config &conf);
-BDescVec loadBindings(const Config &conf);
+void storeBindings(const BDescVec& d, const Config& conf);
+BDescVec loadBindings(const Config& conf);
 
 #endif // KEYBINDINGS_H

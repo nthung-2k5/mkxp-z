@@ -23,128 +23,119 @@
 
 #include <SDL.h>
 #include <SDL_image.h>
-#include <SDL_ttf.h>
 #include <SDL_rect.h>
 #include <SDL_surface.h>
+#include <SDL_ttf.h>
 
 #include <pixman.h>
 
-#include "gl-util.h"
+#include "exception.h"
 #include "gl-meta.h"
+#include "gl-util.h"
 #include "quad.h"
 #include "quadarray.h"
 #include "transform.h"
-#include "exception.h"
 
-#include "sharedstate.h"
-#include "glstate.h"
-#include "texpool.h"
-#include "shader.h"
+#include "eventthread.h"
 #include "filesystem.h"
 #include "font.h"
-#include "eventthread.h"
+#include "glstate.h"
 #include "graphics.h"
+#include "shader.h"
+#include "sharedstate.h"
 #include "system.h"
+#include "texpool.h"
 #include "util/util.h"
 
 #include "debugwriter.h"
 
 #include "sigslot/signal.hpp"
 
-#include <math.h>
 #include <algorithm>
+#include <math.h>
 
-extern "C" {
+extern "C"
+{
 #include "libnsgif/libnsgif.h"
 }
 
-#define GUARD_MEGA \
-{ \
-if (p->megaSurface) \
-throw Exception(Exception::MKXPError, \
-"Operation not supported for mega surfaces"); \
-}
+#define GUARD_MEGA                                                                                                     \
+    {                                                                                                                  \
+        if (p->megaSurface) throw Exception(Exception::MKXPError, "Operation not supported for mega surfaces");        \
+    }
 
-#define GUARD_ANIMATED \
-{ \
-if (p->animation.enabled) \
-throw Exception(Exception::MKXPError, \
-"Operation not supported for animated bitmaps"); \
-}
+#define GUARD_ANIMATED                                                                                                 \
+    {                                                                                                                  \
+        if (p->animation.enabled)                                                                                      \
+            throw Exception(Exception::MKXPError, "Operation not supported for animated bitmaps");                     \
+    }
 
-#define GUARD_UNANIMATED \
-{ \
-if (!p->animation.enabled) \
-throw Exception(Exception::MKXPError, \
-"Operation not supported for static bitmaps"); \
-}
+#define GUARD_UNANIMATED                                                                                               \
+    {                                                                                                                  \
+        if (!p->animation.enabled)                                                                                     \
+            throw Exception(Exception::MKXPError, "Operation not supported for static bitmaps");                       \
+    }
 
 #define OUTLINE_SIZE 1
 
 /* Normalize (= ensure width and
  * height are positive) */
-static IntRect normalizedRect(const IntRect &rect)
+static IntRect normalizedRect(const IntRect& rect)
 {
     IntRect norm = rect;
-    
+
     if (norm.w < 0)
     {
         norm.w = -norm.w;
         norm.x -= norm.w;
     }
-    
+
     if (norm.h < 0)
     {
         norm.h = -norm.h;
         norm.y -= norm.h;
     }
-    
+
     return norm;
 }
 
-
 // libnsgif loading callbacks, taken pretty much straight from their tests
 
-static void *gif_bitmap_create(int width, int height)
+static void* gif_bitmap_create(int width, int height)
 {
     /* ensure a stupidly large bitmap is not created */
     return calloc(width * height, 4);
 }
 
-
-static void gif_bitmap_set_opaque(void *bitmap, bool opaque)
+static void gif_bitmap_set_opaque(void* bitmap, bool opaque)
 {
-    (void) opaque;  /* unused */
-    (void) bitmap;  /* unused */
+    (void)opaque; /* unused */
+    (void)bitmap; /* unused */
     assert(bitmap);
 }
 
-
-static bool gif_bitmap_test_opaque(void *bitmap)
+static bool gif_bitmap_test_opaque(void* bitmap)
 {
-    (void) bitmap;  /* unused */
+    (void)bitmap; /* unused */
     assert(bitmap);
     return false;
 }
 
-
-static unsigned char *gif_bitmap_get_buffer(void *bitmap)
+static unsigned char* gif_bitmap_get_buffer(void* bitmap)
 {
     assert(bitmap);
-    return (unsigned char *)bitmap;
+    return (unsigned char*)bitmap;
 }
 
-
-static void gif_bitmap_destroy(void *bitmap)
+static void gif_bitmap_destroy(void* bitmap)
 {
     assert(bitmap);
     free(bitmap);
 }
 
-
-static void gif_bitmap_modified(void *bitmap)
+static void gif_bitmap_modified(void* bitmap)
 {
-    (void) bitmap;  /* unused */
+    (void)bitmap; /* unused */
     assert(bitmap);
     return;
 }
@@ -153,12 +144,13 @@ static void gif_bitmap_modified(void *bitmap)
 
 struct BitmapPrivate
 {
-    Bitmap *self;
-    
-    struct {
+    Bitmap* self;
+
+    struct
+    {
         int width;
         int height;
-        
+
         bool enabled;
         bool playing;
         bool needsReset;
@@ -167,69 +159,74 @@ struct BitmapPrivate
         float fps;
         int lastFrame;
         double startTime, playTime;
-        
-        inline unsigned int currentFrameIRaw() {
+
+        inline unsigned int currentFrameIRaw()
+        {
             if (fps <= 0) return lastFrame;
             return floor(lastFrame + (playTime / (1 / fps)));
         }
-        
-        unsigned int currentFrameI() {
+
+        unsigned int currentFrameI()
+        {
             if (!playing || needsReset) return lastFrame;
             int i = currentFrameIRaw();
             return (loop) ? fmod(i, frames.size()) : (i > (int)frames.size() - 1) ? (int)frames.size() - 1 : i;
         }
-        
-        inline TEXFBO &currentFrame() {
+
+        inline TEXFBO& currentFrame()
+        {
             int i = currentFrameI();
             return frames[i];
         }
-        
-        inline void play() {
+
+        inline void play()
+        {
             playing = true;
             needsReset = true;
         }
-        
-        inline void stop() {
+
+        inline void stop()
+        {
             lastFrame = currentFrameI();
             playing = false;
         }
-        
-        inline void seek(int frame) {
-            lastFrame = clamp(frame, 0, (int)frames.size());
-        }
-        
-        void updateTimer() {
-            if (needsReset) {
+
+        inline void seek(int frame) { lastFrame = clamp(frame, 0, (int)frames.size()); }
+
+        void updateTimer()
+        {
+            if (needsReset)
+            {
                 lastFrame = currentFrameI();
                 playTime = 0;
                 startTime = shState->runTime();
                 needsReset = false;
                 return;
             }
-            
+
             playTime = shState->runTime() - startTime;
             return;
         }
     } animation;
-    
+
     sigslot::connection prepareCon;
-    
+
     TEXFBO gl;
-    
-    Font *font;
-    
+
+    Font* font;
+
     /* "Mega surfaces" are a hack to allow Tilesets to be used
      * whose Bitmaps don't fit into a regular texture. They're
      * kept in RAM and will throw an error if they're used in
      * any context other than as Tilesets */
-    SDL_Surface *megaSurface;
-    
+    SDL_Surface* megaSurface;
+
     /* A cached version of the bitmap in client memory, for
      * getPixel calls. Is invalidated any time the bitmap
      * is modified */
-    SDL_Surface *surface;
-    SDL_PixelFormat *format;
-    
+    SDL_Surface* surface;
+    SDL_PixelFormat* format;
+
     /* The 'tainted' area describes which parts of the
      * bitmap are not cleared, ie. don't have 0 opacity.
      * If we're blitting / drawing text to a cleared part
@@ -239,20 +236,15 @@ struct BitmapPrivate
     pixman_region16_t tainted;
 
     // For high-resolution texture replacement.
-    Bitmap *selfHires;
-    Bitmap *selfLores;
+    Bitmap* selfHires;
+    Bitmap* selfLores;
     bool assumingRubyGC;
-    
-    BitmapPrivate(Bitmap *self)
-    : self(self),
-    megaSurface(0),
-    selfHires(0),
-    selfLores(0),
-    surface(0),
-    assumingRubyGC(false)
+
+    BitmapPrivate(Bitmap* self):
+        self(self), megaSurface(0), selfHires(0), selfLores(0), surface(0), assumingRubyGC(false)
     {
         format = SDL_AllocFormat(SDL_PIXELFORMAT_ABGR8888);
-        
+
         animation.width = 0;
         animation.height = 0;
         animation.enabled = false;
@@ -262,89 +254,83 @@ struct BitmapPrivate
         animation.startTime = 0;
         animation.fps = 0;
         animation.lastFrame = 0;
-        
+
         prepareCon = shState->prepareDraw.connect(&BitmapPrivate::prepare, this);
-        
+
         font = &shState->defaultFont();
         pixman_region_init(&tainted);
     }
-    
+
     ~BitmapPrivate()
     {
         prepareCon.disconnect();
         SDL_FreeFormat(format);
         pixman_region_fini(&tainted);
     }
-    
-    TEXFBO &getGLTypes() {
-        return (animation.enabled) ? animation.currentFrame() : gl;
-    }
-    
+
+    TEXFBO& getGLTypes() { return (animation.enabled) ? animation.currentFrame() : gl; }
+
     void prepare()
     {
         if (!animation.enabled || !animation.playing) return;
-        
+
         animation.updateTimer();
     }
-    
+
     void allocSurface()
     {
-        surface = SDL_CreateRGBSurface(0, gl.width, gl.height, format->BitsPerPixel,
-                                       format->Rmask, format->Gmask,
+        surface = SDL_CreateRGBSurface(0, gl.width, gl.height, format->BitsPerPixel, format->Rmask, format->Gmask,
                                        format->Bmask, format->Amask);
     }
-    
+
     void clearTaintedArea()
     {
         pixman_region_fini(&tainted);
         pixman_region_init(&tainted);
     }
-    
-    void addTaintedArea(const IntRect &rect)
+
+    void addTaintedArea(const IntRect& rect)
     {
         IntRect norm = normalizedRect(rect);
-        pixman_region_union_rect
-        (&tainted, &tainted, norm.x, norm.y, norm.w, norm.h);
+        pixman_region_union_rect(&tainted, &tainted, norm.x, norm.y, norm.w, norm.h);
     }
-    
-    void substractTaintedArea(const IntRect &rect)
+
+    void substractTaintedArea(const IntRect& rect)
     {
-        if (!touchesTaintedArea(rect))
-            return;
-        
+        if (!touchesTaintedArea(rect)) return;
+
         pixman_region16_t m_reg;
         pixman_region_init_rect(&m_reg, rect.x, rect.y, rect.w, rect.h);
-        
+
         pixman_region_subtract(&tainted, &m_reg, &tainted);
-        
+
         pixman_region_fini(&m_reg);
     }
-    
-    bool touchesTaintedArea(const IntRect &rect)
+
+    bool touchesTaintedArea(const IntRect& rect)
     {
         pixman_box16_t box;
         box.x1 = rect.x;
         box.y1 = rect.y;
         box.x2 = rect.x + rect.w;
         box.y2 = rect.y + rect.h;
-        
-        pixman_region_overlap_t result =
-        pixman_region_contains_rectangle(&tainted, &box);
-        
+
+        pixman_region_overlap_t result = pixman_region_contains_rectangle(&tainted, &box);
+
         return result != PIXMAN_REGION_OUT;
     }
-    
-    void bindTexture(ShaderBase &shader, bool substituteLoresSize = true)
+
+    void bindTexture(ShaderBase& shader, bool substituteLoresSize = true)
     {
-        if (selfHires) {
+        if (selfHires)
+        {
             selfHires->bindTex(shader);
             return;
         }
 
-        if (animation.enabled) {
-            if (selfLores) {
-                Debug() << "BUG: High-res BitmapPrivate bindTexture for animations not implemented";
-            }
+        if (animation.enabled)
+        {
+            if (selfLores) { Debug() << "BUG: High-res BitmapPrivate bindTexture for animations not implemented"; }
 
             TEXFBO cframe = animation.currentFrame();
             TEX::bind(cframe.tex);
@@ -352,63 +338,51 @@ struct BitmapPrivate
             return;
         }
         TEX::bind(gl.tex);
-        if (selfLores && substituteLoresSize) {
-            shader.setTexSize(Vec2i(selfLores->width(), selfLores->height()));
-        }
-        else {
-            shader.setTexSize(Vec2i(gl.width, gl.height));
-        }
+        if (selfLores && substituteLoresSize) { shader.setTexSize(Vec2i(selfLores->width(), selfLores->height())); }
+        else { shader.setTexSize(Vec2i(gl.width, gl.height)); }
     }
-    
-    void bindFBO()
-    {
-        FBO::bind((animation.enabled) ? animation.currentFrame().fbo : gl.fbo);
-    }
-    
-    void pushSetViewport(ShaderBase &shader) const
+
+    void bindFBO() { FBO::bind((animation.enabled) ? animation.currentFrame().fbo : gl.fbo); }
+
+    void pushSetViewport(ShaderBase& shader) const
     {
         glState.viewport.pushSet(IntRect(0, 0, gl.width, gl.height));
         shader.applyViewportProj();
     }
-    
-    void popViewport() const
-    {
-        glState.viewport.pop();
-    }
-    
-    void blitQuad(Quad &quad)
+
+    void popViewport() const { glState.viewport.pop(); }
+
+    void blitQuad(Quad& quad)
     {
         glState.blend.pushSet(false);
         quad.draw();
         glState.blend.pop();
     }
-    
-    void fillRect(const IntRect &rect,
-                  const Vec4 &color)
+
+    void fillRect(const IntRect& rect, const Vec4& color)
     {
         bindFBO();
-        
+
         glState.scissorTest.pushSet(true);
         glState.scissorBox.pushSet(normalizedRect(rect));
         glState.clearColor.pushSet(color);
-        
+
         FBO::clear();
-        
+
         glState.clearColor.pop();
         glState.scissorBox.pop();
         glState.scissorTest.pop();
     }
-    
-    static void ensureFormat(SDL_Surface *&surf, Uint32 format)
+
+    static void ensureFormat(SDL_Surface*& surf, Uint32 format)
     {
-        if (surf->format->format == format)
-            return;
-        
-        SDL_Surface *surfConv = SDL_ConvertSurfaceFormat(surf, format, 0);
+        if (surf->format->format == format) return;
+
+        SDL_Surface* surfConv = SDL_ConvertSurfaceFormat(surf, format, 0);
         SDL_FreeSurface(surf);
         surf = surfConv;
     }
-    
+
     void onModified(bool freeSurface = true)
     {
         if (surface && freeSurface)
@@ -416,54 +390,49 @@ struct BitmapPrivate
             SDL_FreeSurface(surface);
             surface = 0;
         }
-        
+
         self->modified();
     }
 };
 
-struct BitmapOpenHandler : FileSystem::OpenHandler
+struct BitmapOpenHandler: FileSystem::OpenHandler
 {
     // Non-GIF
-    SDL_Surface *surface;
-    
+    SDL_Surface* surface;
+
     // GIF
     std::string error;
-    gif_animation *gif;
-    unsigned char *gif_data;
+    gif_animation* gif;
+    unsigned char* gif_data;
     size_t gif_data_size;
-    
-    
-    BitmapOpenHandler()
-    : surface(0), gif(0), gif_data(0), gif_data_size(0)
-    {}
-    
-    bool tryRead(SDL_RWops &ops, const char *ext)
+
+    BitmapOpenHandler(): surface(0), gif(0), gif_data(0), gif_data_size(0) {}
+
+    bool tryRead(SDL_RWops& ops, const char* ext)
     {
-        if (IMG_isGIF(&ops)) {
+        if (IMG_isGIF(&ops))
+        {
             // Use libnsgif to initialise the gif data
             gif = new gif_animation;
-            
-            gif_bitmap_callback_vt gif_bitmap_callbacks = {
-                gif_bitmap_create,
-                gif_bitmap_destroy,
-                gif_bitmap_get_buffer,
-                gif_bitmap_set_opaque,
-                gif_bitmap_test_opaque,
-                gif_bitmap_modified
-            };
-            
+
+            gif_bitmap_callback_vt gif_bitmap_callbacks = {gif_bitmap_create,      gif_bitmap_destroy,
+                                                           gif_bitmap_get_buffer,  gif_bitmap_set_opaque,
+                                                           gif_bitmap_test_opaque, gif_bitmap_modified};
+
             gif_create(gif, &gif_bitmap_callbacks);
-            
+
             gif_data_size = ops.size(&ops);
-            
+
             gif_data = new unsigned char[gif_data_size];
             ops.seek(&ops, 0, RW_SEEK_SET);
             ops.read(&ops, gif_data, gif_data_size, 1);
-            
+
             int status;
-            do {
+            do
+            {
                 status = gif_initialise(gif, gif_data_size, gif_data);
-                if (status != GIF_OK && status != GIF_WORKING) {
+                if (status != GIF_OK && status != GIF_WORKING)
+                {
                     gif_finalise(gif);
                     delete gif;
                     delete gif_data;
@@ -471,37 +440,39 @@ struct BitmapOpenHandler : FileSystem::OpenHandler
                     return false;
                 }
             } while (status != GIF_OK);
-            
+
             // Decode the first frame
             status = gif_decode_frame(gif, 0);
-            if (status != GIF_OK && status != GIF_WORKING) {
+            if (status != GIF_OK && status != GIF_WORKING)
+            {
                 error = "Failed to decode first GIF frame. (Error " + std::to_string(status) + ")";
                 gif_finalise(gif);
                 delete gif;
                 delete gif_data;
                 return false;
             }
-        } else {
-            surface = IMG_LoadTyped_RW(&ops, 1, ext);
         }
+        else { surface = IMG_LoadTyped_RW(&ops, 1, ext); }
         return (surface || gif);
     }
 };
 
-Bitmap::Bitmap(const char *filename)
+Bitmap::Bitmap(const char* filename)
 {
     std::string hiresPrefix = "Hires/";
     std::string filenameStd = filename;
-    Bitmap *hiresBitmap = nullptr;
+    Bitmap* hiresBitmap = nullptr;
     // TODO: once C++20 is required, switch to filenameStd.starts_with(hiresPrefix)
-    if (shState->config().enableHires && filenameStd.compare(0, hiresPrefix.size(), hiresPrefix) != 0) {
+    if (shState->config().enableHires && filenameStd.compare(0, hiresPrefix.size(), hiresPrefix) != 0)
+    {
         // Look for a high-res version of the file.
         std::string hiresFilename = hiresPrefix + filenameStd;
-        try {
+        try
+        {
             hiresBitmap = new Bitmap(hiresFilename.c_str());
             hiresBitmap->setLores(this);
         }
-        catch (const Exception &e)
+        catch (const Exception& e)
         {
             Debug() << "No high-res Bitmap found at" << hiresFilename;
             hiresBitmap = nullptr;
@@ -510,108 +481,117 @@ Bitmap::Bitmap(const char *filename)
 
     BitmapOpenHandler handler;
     shState->fileSystem().openRead(handler, filename);
-    
-    if (!handler.error.empty()) {
+
+    if (!handler.error.empty())
+    {
         // Not loaded with SDL, but I want it to be caught with the same exception type
         throw Exception(Exception::SDLError, "Error loading image '%s': %s", filename, handler.error.c_str());
     }
-    else if (!handler.gif && !handler.surface) {
-        throw Exception(Exception::SDLError, "Error loading image '%s': %s",
-                        filename, SDL_GetError());
+    else if (!handler.gif && !handler.surface)
+    {
+        throw Exception(Exception::SDLError, "Error loading image '%s': %s", filename, SDL_GetError());
     }
-    
-    if (handler.gif) {
+
+    if (handler.gif)
+    {
         p = new BitmapPrivate(this);
 
         p->selfHires = hiresBitmap;
-        
-        if (handler.gif->width >= (uint32_t)glState.caps.maxTexSize || handler.gif->height > (uint32_t)glState.caps.maxTexSize)
+
+        if (handler.gif->width >= (uint32_t)glState.caps.maxTexSize ||
+            handler.gif->height > (uint32_t)glState.caps.maxTexSize)
         {
-            throw new Exception(Exception::MKXPError, "Animation too large (%ix%i, max %ix%i)",
-                                handler.gif->width, handler.gif->height, glState.caps.maxTexSize, glState.caps.maxTexSize);
+            throw new Exception(Exception::MKXPError, "Animation too large (%ix%i, max %ix%i)", handler.gif->width,
+                                handler.gif->height, glState.caps.maxTexSize, glState.caps.maxTexSize);
         }
-        
-        if (handler.gif->frame_count == 1) {
+
+        if (handler.gif->frame_count == 1)
+        {
             TEXFBO texfbo;
-            try {
+            try
+            {
                 texfbo = shState->texPool().request(handler.gif->width, handler.gif->height);
             }
-            catch (const Exception &e)
+            catch (const Exception& e)
             {
                 gif_finalise(handler.gif);
                 delete handler.gif;
                 delete handler.gif_data;
-                
+
                 throw e;
             }
-            
+
             TEX::bind(texfbo.tex);
             TEX::uploadImage(handler.gif->width, handler.gif->height, handler.gif->frame_image, GL_RGBA);
             gif_finalise(handler.gif);
             delete handler.gif;
             delete handler.gif_data;
-            
+
             p->gl = texfbo;
-            if (p->selfHires != nullptr) {
-                p->gl.selfHires = &p->selfHires->getGLTypes();
-            }
+            if (p->selfHires != nullptr) { p->gl.selfHires = &p->selfHires->getGLTypes(); }
             p->addTaintedArea(rect());
             return;
         }
-        
+
         p->animation.enabled = true;
         p->animation.width = handler.gif->width;
         p->animation.height = handler.gif->height;
-        
+
         // Guess framerate based on the first frame's delay
         p->animation.fps = 1 / ((float)handler.gif->frames[handler.gif->decoded_frame].frame_delay / 100);
         if (p->animation.fps < 0) p->animation.fps = shState->graphics().getFrameRate();
-        
+
         // Loop gif (Either it's looping or it's not, at the moment)
         p->animation.loop = handler.gif->loop_count >= 0;
-        
+
         int fcount = handler.gif->frame_count;
         int fcount_partial = handler.gif->frame_count_partial;
-        if (fcount > fcount_partial) {
-            Debug() << "Non-fatal error reading" << filename << ": Only decoded" << fcount_partial << "out of" << fcount << "frames";
+        if (fcount > fcount_partial)
+        {
+            Debug() << "Non-fatal error reading" << filename << ": Only decoded" << fcount_partial << "out of" << fcount
+                    << "frames";
         }
-        for (int i = 0; i < fcount_partial; i++) {
-            if (i > 0) {
+        for (int i = 0; i < fcount_partial; i++)
+        {
+            if (i > 0)
+            {
                 int status = gif_decode_frame(handler.gif, i);
-                if (status != GIF_OK && status != GIF_WORKING) {
-                    for (TEXFBO &frame : p->animation.frames)
+                if (status != GIF_OK && status != GIF_WORKING)
+                {
+                    for (TEXFBO& frame: p->animation.frames)
                         shState->texPool().release(frame);
-                    
+
                     gif_finalise(handler.gif);
                     delete handler.gif;
                     delete handler.gif_data;
-                    
-                    throw Exception(Exception::MKXPError, "Failed to decode GIF frame %i out of %i (Status %i)",
-                                    i + 1, fcount_partial, status);
+
+                    throw Exception(Exception::MKXPError, "Failed to decode GIF frame %i out of %i (Status %i)", i + 1,
+                                    fcount_partial, status);
                 }
             }
-            
+
             TEXFBO texfbo;
-            try {
+            try
+            {
                 texfbo = shState->texPool().request(p->animation.width, p->animation.height);
             }
-            catch (const Exception &e)
+            catch (const Exception& e)
             {
-                for (TEXFBO &frame : p->animation.frames)
+                for (TEXFBO& frame: p->animation.frames)
                     shState->texPool().release(frame);
-                
+
                 gif_finalise(handler.gif);
                 delete handler.gif;
                 delete handler.gif_data;
-                
+
                 throw e;
             }
-            
+
             TEX::bind(texfbo.tex);
             TEX::uploadImage(p->animation.width, p->animation.height, handler.gif->frame_image, GL_RGBA);
             p->animation.frames.push_back(texfbo);
         }
-        
+
         gif_finalise(handler.gif);
         delete handler.gif;
         delete handler.gif_data;
@@ -619,19 +599,19 @@ Bitmap::Bitmap(const char *filename)
         return;
     }
 
-    SDL_Surface *imgSurf = handler.surface;
+    SDL_Surface* imgSurf = handler.surface;
 
     initFromSurface(imgSurf, hiresBitmap, true);
 }
 
 Bitmap::Bitmap(int width, int height, bool isHires)
 {
-    if (width <= 0 || height <= 0)
-        throw Exception(Exception::RGSSError, "failed to create bitmap");
-    
-    Bitmap *hiresBitmap = nullptr;
+    if (width <= 0 || height <= 0) throw Exception(Exception::RGSSError, "failed to create bitmap");
 
-    if (shState->config().enableHires && !isHires) {
+    Bitmap* hiresBitmap = nullptr;
+
+    if (shState->config().enableHires && !isHires)
+    {
         // Create a high-res version as well.
         double scalingFactor = shState->config().textureScalingFactor;
         int hiresWidth = (int)lround(scalingFactor * width);
@@ -641,31 +621,24 @@ Bitmap::Bitmap(int width, int height, bool isHires)
     }
 
     TEXFBO tex = shState->texPool().request(width, height);
-    
+
     p = new BitmapPrivate(this);
     p->gl = tex;
     p->selfHires = hiresBitmap;
-    if (p->selfHires != nullptr) {
-        p->gl.selfHires = &p->selfHires->getGLTypes();
-    }
-    
+    if (p->selfHires != nullptr) { p->gl.selfHires = &p->selfHires->getGLTypes(); }
+
     clear();
 }
 
-Bitmap::Bitmap(void *pixeldata, int width, int height)
+Bitmap::Bitmap(void* pixeldata, int width, int height)
 {
-    SDL_Surface *surface = SDL_CreateRGBSurface(0, width, height, p->format->BitsPerPixel,
-                                                p->format->Rmask,
-                                                p->format->Gmask,
-                                                p->format->Bmask,
-                                                p->format->Amask);
-    
-    if (!surface)
-        throw Exception(Exception::SDLError, "Error creating Bitmap: %s",
-                        SDL_GetError());
-    
-    memcpy(surface->pixels, pixeldata, width*height*(p->format->BitsPerPixel/8));
-    
+    SDL_Surface* surface = SDL_CreateRGBSurface(0, width, height, p->format->BitsPerPixel, p->format->Rmask,
+                                                p->format->Gmask, p->format->Bmask, p->format->Amask);
+
+    if (!surface) throw Exception(Exception::SDLError, "Error creating Bitmap: %s", SDL_GetError());
+
+    memcpy(surface->pixels, pixeldata, width * height * (p->format->BitsPerPixel / 8));
+
     if (surface->w > glState.caps.maxTexSize || surface->h > glState.caps.maxTexSize)
     {
         p = new BitmapPrivate(this);
@@ -675,59 +648,58 @@ Bitmap::Bitmap(void *pixeldata, int width, int height)
     else
     {
         TEXFBO tex;
-        
+
         try
         {
             tex = shState->texPool().request(surface->w, surface->h);
         }
-        catch (const Exception &e)
+        catch (const Exception& e)
         {
             SDL_FreeSurface(surface);
             throw e;
         }
-        
+
         p = new BitmapPrivate(this);
         p->gl = tex;
-        
+
         TEX::bind(p->gl.tex);
         TEX::uploadImage(p->gl.width, p->gl.height, surface->pixels, GL_RGBA);
-        
+
         SDL_FreeSurface(surface);
     }
-    
+
     p->addTaintedArea(rect());
 }
 
 // frame is -2 for "any and all", -1 for "current", anything else for a specific frame
-Bitmap::Bitmap(const Bitmap &other, int frame)
+Bitmap::Bitmap(const Bitmap& other, int frame)
 {
     other.guardDisposed();
     other.ensureNonMega();
     if (frame > -2) other.ensureAnimated();
-    
-    if (other.hasHires()) {
-        Debug() << "BUG: High-res Bitmap from animation not implemented";
-    }
+
+    if (other.hasHires()) { Debug() << "BUG: High-res Bitmap from animation not implemented"; }
 
     p = new BitmapPrivate(this);
-    
+
     // TODO: Clean me up
-    if (!other.isAnimated() || frame >= -1) {
+    if (!other.isAnimated() || frame >= -1)
+    {
         p->gl = shState->texPool().request(other.width(), other.height());
-        
+
         GLMeta::blitBegin(p->gl);
         // Blit just the current frame of the other animated bitmap
-        if (!other.isAnimated() || frame == -1) {
-            GLMeta::blitSource(other.getGLTypes());
-        }
-        else {
-            auto &frames = other.getFrames();
+        if (!other.isAnimated() || frame == -1) { GLMeta::blitSource(other.getGLTypes()); }
+        else
+        {
+            auto& frames = other.getFrames();
             GLMeta::blitSource(frames[clamp(frame, 0, (int)frames.size() - 1)]);
         }
         GLMeta::blitRectangle(rect(), rect(), true);
         GLMeta::blitEnd();
     }
-    else {
+    else
+    {
         p->animation.enabled = true;
         p->animation.fps = other.getAnimationFPS();
         p->animation.width = other.width();
@@ -736,34 +708,39 @@ Bitmap::Bitmap(const Bitmap &other, int frame)
         p->animation.playTime = 0;
         p->animation.startTime = 0;
         p->animation.loop = other.getLooping();
-        
-        for (TEXFBO &sourceframe : other.getFrames()) {
+
+        for (TEXFBO& sourceframe: other.getFrames())
+        {
             TEXFBO newframe;
-            try {
+            try
+            {
                 newframe = shState->texPool().request(p->animation.width, p->animation.height);
-            } catch(const Exception &e) {
-                for (TEXFBO &f : p->animation.frames)
+            }
+            catch (const Exception& e)
+            {
+                for (TEXFBO& f: p->animation.frames)
                     shState->texPool().release(f);
                 throw e;
             }
-            
+
             GLMeta::blitBegin(newframe);
             GLMeta::blitSource(sourceframe);
             GLMeta::blitRectangle(rect(), rect(), true);
             GLMeta::blitEnd();
-            
+
             p->animation.frames.push_back(newframe);
         }
     }
-    
+
     p->addTaintedArea(rect());
 }
 
-Bitmap::Bitmap(TEXFBO &other)
+Bitmap::Bitmap(TEXFBO& other)
 {
-    Bitmap *hiresBitmap = nullptr;
+    Bitmap* hiresBitmap = nullptr;
 
-    if (other.selfHires != nullptr) {
+    if (other.selfHires != nullptr)
+    {
         // Create a high-res version as well.
         hiresBitmap = new Bitmap(*other.selfHires);
         hiresBitmap->setLores(this);
@@ -774,12 +751,11 @@ Bitmap::Bitmap(TEXFBO &other)
     p->gl = shState->texPool().request(other.width, other.height);
 
     p->selfHires = hiresBitmap;
-    if (p->selfHires != nullptr) {
-        p->gl.selfHires = &p->selfHires->getGLTypes();
-    }
+    if (p->selfHires != nullptr) { p->gl.selfHires = &p->selfHires->getGLTypes(); }
 
     // Skip blitting to lores texture, since only the hires one will be displayed.
-    if (p->selfHires == nullptr) {
+    if (p->selfHires == nullptr)
+    {
         GLMeta::blitBegin(p->gl);
         GLMeta::blitSource(other);
         GLMeta::blitRectangle(rect(), rect(), true);
@@ -789,11 +765,12 @@ Bitmap::Bitmap(TEXFBO &other)
     p->addTaintedArea(rect());
 }
 
-Bitmap::Bitmap(SDL_Surface *imgSurf, SDL_Surface *imgSurfHires)
+Bitmap::Bitmap(SDL_Surface* imgSurf, SDL_Surface* imgSurfHires)
 {
-    Bitmap *hiresBitmap = nullptr;
+    Bitmap* hiresBitmap = nullptr;
 
-    if (imgSurfHires != nullptr) {
+    if (imgSurfHires != nullptr)
+    {
         // Create a high-res version as well.
         hiresBitmap = new Bitmap(imgSurfHires, nullptr);
         hiresBitmap->setLores(this);
@@ -802,22 +779,17 @@ Bitmap::Bitmap(SDL_Surface *imgSurf, SDL_Surface *imgSurfHires)
     initFromSurface(imgSurf, hiresBitmap, false);
 }
 
-Bitmap::~Bitmap()
-{
-    dispose();
-}
+Bitmap::~Bitmap() { dispose(); }
 
-void Bitmap::initFromSurface(SDL_Surface *imgSurf, Bitmap *hiresBitmap, bool freeSurface)
+void Bitmap::initFromSurface(SDL_Surface* imgSurf, Bitmap* hiresBitmap, bool freeSurface)
 {
     p->ensureFormat(imgSurf, SDL_PIXELFORMAT_ABGR8888);
-    
+
     if (imgSurf->w > glState.caps.maxTexSize || imgSurf->h > glState.caps.maxTexSize)
     {
         /* Mega surface */
 
-        if(!freeSurface) {
-            throw Exception(Exception::RGSSError, "Cloning Mega Bitmap from Surface not supported");
-        }
+        if (!freeSurface) { throw Exception(Exception::RGSSError, "Cloning Mega Bitmap from Surface not supported"); }
 
         p = new BitmapPrivate(this);
         p->selfHires = hiresBitmap;
@@ -828,64 +800,55 @@ void Bitmap::initFromSurface(SDL_Surface *imgSurf, Bitmap *hiresBitmap, bool fre
     {
         /* Regular surface */
         TEXFBO tex;
-        
+
         try
         {
             tex = shState->texPool().request(imgSurf->w, imgSurf->h);
         }
-        catch (const Exception &e)
+        catch (const Exception& e)
         {
             SDL_FreeSurface(imgSurf);
             throw e;
         }
-        
+
         p = new BitmapPrivate(this);
         p->selfHires = hiresBitmap;
         p->gl = tex;
-        if (p->selfHires != nullptr) {
-            p->gl.selfHires = &p->selfHires->getGLTypes();
-        }
-        
+        if (p->selfHires != nullptr) { p->gl.selfHires = &p->selfHires->getGLTypes(); }
+
         TEX::bind(p->gl.tex);
         TEX::uploadImage(p->gl.width, p->gl.height, imgSurf->pixels, GL_RGBA);
-        
-        if (freeSurface) {
-            SDL_FreeSurface(imgSurf);
-        }
+
+        if (freeSurface) { SDL_FreeSurface(imgSurf); }
     }
-    
+
     p->addTaintedArea(rect());
 }
 
 int Bitmap::width() const
 {
     guardDisposed();
-    
-    if (p->megaSurface) {
-        return p->megaSurface->w;
-    }
-    
-    if (p->animation.enabled) {
-        return p->animation.width;
-    }
-    
+
+    if (p->megaSurface) { return p->megaSurface->w; }
+
+    if (p->animation.enabled) { return p->animation.width; }
+
     return p->gl.width;
 }
 
 int Bitmap::height() const
 {
     guardDisposed();
-    
-    if (p->megaSurface)
-        return p->megaSurface->h;
-    
-    if (p->animation.enabled)
-        return p->animation.height;
-    
+
+    if (p->megaSurface) return p->megaSurface->h;
+
+    if (p->animation.enabled) return p->animation.height;
+
     return p->gl.height;
 }
 
-bool Bitmap::hasHires() const{
+bool Bitmap::hasHires() const
+{
     guardDisposed();
 
     return p->selfHires;
@@ -893,7 +856,8 @@ bool Bitmap::hasHires() const{
 
 DEF_ATTR_RD_SIMPLE(Bitmap, Hires, Bitmap*, p->selfHires)
 
-void Bitmap::setHires(Bitmap *hires) {
+void Bitmap::setHires(Bitmap* hires)
+{
     guardDisposed();
 
     Debug() << "BUG: High-res Bitmap setHires not fully implemented, expect bugs";
@@ -901,59 +865,56 @@ void Bitmap::setHires(Bitmap *hires) {
     p->selfHires = hires;
 }
 
-void Bitmap::setLores(Bitmap *lores) {
+void Bitmap::setLores(Bitmap* lores)
+{
     guardDisposed();
 
     p->selfLores = lores;
 }
 
-bool Bitmap::isMega() const{
+bool Bitmap::isMega() const
+{
     guardDisposed();
-    
+
     return p->megaSurface;
 }
 
-bool Bitmap::isAnimated() const {
+bool Bitmap::isAnimated() const
+{
     guardDisposed();
-    
+
     return p->animation.enabled;
 }
 
 IntRect Bitmap::rect() const
 {
     guardDisposed();
-    
+
     return IntRect(0, 0, width(), height());
 }
 
-void Bitmap::blt(int x, int y,
-                 const Bitmap &source, const IntRect &rect,
-                 int opacity)
+void Bitmap::blt(int x, int y, const Bitmap& source, const IntRect& rect, int opacity)
 {
-    if (source.isDisposed())
-        return;
-    
-    stretchBlt(IntRect(x, y, rect.w, rect.h),
-               source, rect, opacity);
+    if (source.isDisposed()) return;
+
+    stretchBlt(IntRect(x, y, rect.w, rect.h), source, rect, opacity);
 }
 
-static bool shrinkRects(float &sourcePos, float &sourceLen, const int &sBitmapLen,
-                         float &destPos, float &destLen, const int &dBitmapLen, bool normalize = false)
+static bool shrinkRects(float& sourcePos, float& sourceLen, const int& sBitmapLen, float& destPos, float& destLen,
+                        const int& dBitmapLen, bool normalize = false)
 {
     float sStart = sourceLen > 0 ? sourcePos : sourceLen + sourcePos;
     float sEnd = sourceLen > 0 ? sourceLen + sourcePos : sourcePos;
     float sLength = sEnd - sStart;
-    
-    if (sStart >= 0 && sEnd < sBitmapLen)
-        return false;
-    
-    if (sStart >= sBitmapLen || sEnd < 0)
-        return true;
-    
-    float dStart = destLen > 0 ? destPos: destLen + destPos;
+
+    if (sStart >= 0 && sEnd < sBitmapLen) return false;
+
+    if (sStart >= sBitmapLen || sEnd < 0) return true;
+
+    float dStart = destLen > 0 ? destPos : destLen + destPos;
     float dEnd = destLen > 0 ? destLen + destPos : destPos;
     float dLength = dEnd - dStart;
-    
+
     float delta = sEnd - sBitmapLen;
     float dDelta;
     if (delta > 0)
@@ -972,12 +933,12 @@ static bool shrinkRects(float &sourcePos, float &sourceLen, const int &sBitmapLe
         dStart -= dDelta;
         dLength += dDelta;
     }
-    
+
     if (!normalize)
     {
         sourcePos = sourceLen > 0 ? sStart : sEnd;
         sourceLen = sourceLen > 0 ? sLength : -sLength;
-        destPos = destLen > 0  ? dStart : dEnd;
+        destPos = destLen > 0 ? dStart : dEnd;
         destLen = destLen > 0 ? dLength : -dLength;
     }
     else
@@ -988,44 +949,41 @@ static bool shrinkRects(float &sourcePos, float &sourceLen, const int &sBitmapLe
         sourcePos = sStart;
         sourceLen = sLength;
     }
-    
+
     return false;
 }
 
-static bool shrinkRects(int &sourcePos, int &sourceLen, const int &sBitmapLen,
-                         int &destPos, int &destLen, const int &dBitmapLen)
+static bool shrinkRects(int& sourcePos, int& sourceLen, const int& sBitmapLen, int& destPos, int& destLen,
+                        const int& dBitmapLen)
 {
     float fSourcePos = sourcePos;
     float fSourceLen = sourceLen;
     float fDestPos = destPos;
     float fDestLen = destLen;
-    
+
     bool ret = shrinkRects(fSourcePos, fSourceLen, sBitmapLen, fDestPos, fDestLen, dBitmapLen, true);
-    
-    if (!ret)
-        ret = shrinkRects(fDestPos, fDestLen, dBitmapLen, fSourcePos, fSourceLen, sBitmapLen);
-    
+
+    if (!ret) ret = shrinkRects(fDestPos, fDestLen, dBitmapLen, fSourcePos, fSourceLen, sBitmapLen);
+
     sourcePos = round(fSourcePos);
     sourceLen = round(fSourceLen);
     destPos = round(fDestPos);
     destLen = round(fDestLen);
-    
+
     return ret || sourceLen == 0 || destLen == 0;
 }
 
-void Bitmap::stretchBlt(IntRect destRect,
-                        const Bitmap &source, IntRect sourceRect,
-                        int opacity)
+void Bitmap::stretchBlt(IntRect destRect, const Bitmap& source, IntRect sourceRect, int opacity)
 {
     guardDisposed();
 
     // Don't need this, right? This function is fine with megasurfaces it seems
-    //GUARD_MEGA;
+    // GUARD_MEGA;
 
-    if (source.isDisposed())
-        return;
+    if (source.isDisposed()) return;
 
-    if (hasHires()) {
+    if (hasHires())
+    {
         int destX, destY, destWidth, destHeight;
         destX = destRect.x * p->selfHires->width() / width();
         destY = destRect.y * p->selfHires->height() / height();
@@ -1036,7 +994,8 @@ void Bitmap::stretchBlt(IntRect destRect,
         return;
     }
 
-    if (source.hasHires()) {
+    if (source.hasHires())
+    {
         int sourceX, sourceY, sourceWidth, sourceHeight;
         sourceX = sourceRect.x * source.getHires()->width() / source.width();
         sourceY = sourceRect.y * source.getHires()->height() / source.height();
@@ -1048,95 +1007,86 @@ void Bitmap::stretchBlt(IntRect destRect,
     }
 
     opacity = clamp(opacity, 0, 255);
-    
-    if (opacity == 0)
-        return;
-    
-    if(shrinkRects(sourceRect.x, sourceRect.w, source.width(), destRect.x, destRect.w, width()))
-        return;
-    if(shrinkRects(sourceRect.y, sourceRect.h, source.height(), destRect.y, destRect.h, height()))
-        return;
-    
-    SDL_Surface *srcSurf = source.megaSurface();
-    
+
+    if (opacity == 0) return;
+
+    if (shrinkRects(sourceRect.x, sourceRect.w, source.width(), destRect.x, destRect.w, width())) return;
+    if (shrinkRects(sourceRect.y, sourceRect.h, source.height(), destRect.y, destRect.h, height())) return;
+
+    SDL_Surface* srcSurf = source.megaSurface();
+
     if (srcSurf && shState->config().subImageFix)
     {
         /* Blit from software surface, for broken GL drivers */
         Vec2i gpTexSize;
         shState->ensureTexSize(sourceRect.w, sourceRect.h, gpTexSize);
         shState->bindTex();
-        
-        GLMeta::subRectImageUpload(srcSurf->w, sourceRect.x, sourceRect.y, 0, 0,
-                                   sourceRect.w, sourceRect.h, srcSurf, GL_RGBA);
+
+        GLMeta::subRectImageUpload(srcSurf->w, sourceRect.x, sourceRect.y, 0, 0, sourceRect.w, sourceRect.h, srcSurf,
+                                   GL_RGBA);
         GLMeta::subRectImageEnd();
-        
-        SimpleShader &shader = shState->shaders().simple;
+
+        SimpleShader& shader = shState->shaders().simple;
         shader.bind();
         shader.setTranslation(Vec2i());
         shader.setTexSize(gpTexSize);
-        
+
         p->pushSetViewport(shader);
         p->bindFBO();
-        
-        Quad &quad = shState->gpQuad();
+
+        Quad& quad = shState->gpQuad();
         quad.setTexRect(FloatRect(0, 0, sourceRect.w, sourceRect.h));
         quad.setPosRect(destRect);
-        
+
         p->blitQuad(quad);
         p->popViewport();
-        
+
         p->addTaintedArea(destRect);
         p->onModified();
-        
+
         return;
     }
     else if (srcSurf)
     {
         /* Blit from software surface */
         /* Don't do transparent blits for now */
-        if (opacity < 255)
-            source.ensureNonMega();
-        
+        if (opacity < 255) source.ensureNonMega();
+
         SDL_Rect srcRect = sourceRect;
         SDL_Rect dstRect = destRect;
-        SDL_Rect btmRect = { 0, 0, width(), height() };
+        SDL_Rect btmRect = {0, 0, width(), height()};
         SDL_Rect bltRect;
-        
-        if (SDL_IntersectRect(&btmRect, &dstRect, &bltRect) != SDL_TRUE)
-            return;
-        
+
+        if (SDL_IntersectRect(&btmRect, &dstRect, &bltRect) != SDL_TRUE) return;
+
         int bpp;
         Uint32 rMask, gMask, bMask, aMask;
-        SDL_PixelFormatEnumToMasks(SDL_PIXELFORMAT_ABGR8888,
-                                   &bpp, &rMask, &gMask, &bMask, &aMask);
-        SDL_Surface *blitTemp =
-        SDL_CreateRGBSurface(0, destRect.w, destRect.h, bpp, rMask, gMask, bMask, aMask);
-        
+        SDL_PixelFormatEnumToMasks(SDL_PIXELFORMAT_ABGR8888, &bpp, &rMask, &gMask, &bMask, &aMask);
+        SDL_Surface* blitTemp = SDL_CreateRGBSurface(0, destRect.w, destRect.h, bpp, rMask, gMask, bMask, aMask);
+
         SDL_BlitScaled(srcSurf, &srcRect, blitTemp, 0);
-        
+
         TEX::bind(getGLTypes().tex);
-        
+
         if (bltRect.w == dstRect.w && bltRect.h == dstRect.h)
         {
             /* Dest rectangle lies within bounding box */
-            TEX::uploadSubImage(destRect.x, destRect.y,
-                                destRect.w, destRect.h,
-                                blitTemp->pixels, GL_RGBA);
+            TEX::uploadSubImage(destRect.x, destRect.y, destRect.w, destRect.h, blitTemp->pixels, GL_RGBA);
         }
         else
         {
             /* Clipped blit */
-            GLMeta::subRectImageUpload(blitTemp->w, bltRect.x - dstRect.x, bltRect.y - dstRect.y,
-                                       bltRect.x, bltRect.y, bltRect.w, bltRect.h, blitTemp, GL_RGBA);
+            GLMeta::subRectImageUpload(blitTemp->w, bltRect.x - dstRect.x, bltRect.y - dstRect.y, bltRect.x, bltRect.y,
+                                       bltRect.w, bltRect.h, blitTemp, GL_RGBA);
             GLMeta::subRectImageEnd();
         }
-        
+
         SDL_FreeSurface(blitTemp);
-        
+
         p->onModified();
         return;
     }
-    
+
     if (opacity == 255 && !p->touchesTaintedArea(destRect))
     {
         /* Fast blit */
@@ -1148,58 +1098,56 @@ void Bitmap::stretchBlt(IntRect destRect,
     else
     {
         /* Fragment pipeline */
-        float normOpacity = (float) opacity / 255.0f;
-        
-        TEXFBO &gpTex = shState->gpTexFBO(destRect.w, destRect.h);
-        
+        float normOpacity = (float)opacity / 255.0f;
+
+        TEXFBO& gpTex = shState->gpTexFBO(destRect.w, destRect.h);
+
         GLMeta::blitBegin(gpTex);
         GLMeta::blitSource(getGLTypes());
         GLMeta::blitRectangle(destRect, Vec2i());
         GLMeta::blitEnd();
-        
-        FloatRect bltSubRect((float) sourceRect.x / source.width(),
-                             (float) sourceRect.y / source.height(),
-                             ((float) source.width() / sourceRect.w) * ((float) destRect.w / gpTex.width),
-                             ((float) source.height() / sourceRect.h) * ((float) destRect.h / gpTex.height));
-        
-        BltShader &shader = shState->shaders().blt;
+
+        FloatRect bltSubRect((float)sourceRect.x / source.width(), (float)sourceRect.y / source.height(),
+                             ((float)source.width() / sourceRect.w) * ((float)destRect.w / gpTex.width),
+                             ((float)source.height() / sourceRect.h) * ((float)destRect.h / gpTex.height));
+
+        BltShader& shader = shState->shaders().blt;
         shader.bind();
         shader.setDestination(gpTex.tex);
         shader.setSubRect(bltSubRect);
         shader.setOpacity(normOpacity);
-        
-        Quad &quad = shState->gpQuad();
+
+        Quad& quad = shState->gpQuad();
         quad.setTexPosRect(sourceRect, destRect);
         quad.setColor(Vec4(1, 1, 1, normOpacity));
-        
+
         source.p->bindTexture(shader, false);
         p->bindFBO();
         p->pushSetViewport(shader);
-        
+
         p->blitQuad(quad);
-        
+
         p->popViewport();
     }
-    
+
     p->addTaintedArea(destRect);
     p->onModified();
 }
 
-void Bitmap::fillRect(int x, int y,
-                      int width, int height,
-                      const Vec4 &color)
+void Bitmap::fillRect(int x, int y, int width, int height, const Vec4& color)
 {
     fillRect(IntRect(x, y, width, height), color);
 }
 
-void Bitmap::fillRect(const IntRect &rect, const Vec4 &color)
+void Bitmap::fillRect(const IntRect& rect, const Vec4& color)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
+
+    if (hasHires())
+    {
         int destX, destY, destWidth, destHeight;
         destX = rect.x * p->selfHires->width() / width();
         destY = rect.y * p->selfHires->height() / height();
@@ -1210,35 +1158,31 @@ void Bitmap::fillRect(const IntRect &rect, const Vec4 &color)
     }
 
     p->fillRect(rect, color);
-    
-    if (color.w == 0)
-    /* Clear op */
+
+    if (color.w == 0) /* Clear op */
         p->substractTaintedArea(rect);
     else
-    /* Fill op */
+        /* Fill op */
         p->addTaintedArea(rect);
-    
+
     p->onModified();
 }
 
-void Bitmap::gradientFillRect(int x, int y,
-                              int width, int height,
-                              const Vec4 &color1, const Vec4 &color2,
+void Bitmap::gradientFillRect(int x, int y, int width, int height, const Vec4& color1, const Vec4& color2,
                               bool vertical)
 {
     gradientFillRect(IntRect(x, y, width, height), color1, color2, vertical);
 }
 
-void Bitmap::gradientFillRect(const IntRect &rect,
-                              const Vec4 &color1, const Vec4 &color2,
-                              bool vertical)
+void Bitmap::gradientFillRect(const IntRect& rect, const Vec4& color1, const Vec4& color2, bool vertical)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
+
+    if (hasHires())
+    {
         int destX, destY, destWidth, destHeight;
         destX = rect.x * p->selfHires->width() / width();
         destY = rect.y * p->selfHires->height() / height();
@@ -1248,12 +1192,12 @@ void Bitmap::gradientFillRect(const IntRect &rect,
         p->selfHires->gradientFillRect(IntRect(destX, destY, destWidth, destHeight), color1, color2, vertical);
     }
 
-    SimpleColorShader &shader = shState->shaders().simpleColor;
+    SimpleColorShader& shader = shState->shaders().simpleColor;
     shader.bind();
     shader.setTranslation(Vec2i());
-    
-    Quad &quad = shState->gpQuad();
-    
+
+    Quad& quad = shState->gpQuad();
+
     if (vertical)
     {
         quad.vert[0].color = color1;
@@ -1268,34 +1212,32 @@ void Bitmap::gradientFillRect(const IntRect &rect,
         quad.vert[1].color = color2;
         quad.vert[2].color = color2;
     }
-    
+
     quad.setPosRect(rect);
-    
+
     p->bindFBO();
     p->pushSetViewport(shader);
-    
+
     p->blitQuad(quad);
-    
+
     p->popViewport();
-    
+
     p->addTaintedArea(rect);
-    
+
     p->onModified();
 }
 
-void Bitmap::clearRect(int x, int y, int width, int height)
-{
-    clearRect(IntRect(x, y, width, height));
-}
+void Bitmap::clearRect(int x, int y, int width, int height) { clearRect(IntRect(x, y, width, height)); }
 
-void Bitmap::clearRect(const IntRect &rect)
+void Bitmap::clearRect(const IntRect& rect)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
+
+    if (hasHires())
+    {
         int destX, destY, destWidth, destHeight;
         destX = rect.x * p->selfHires->width() / width();
         destY = rect.y * p->selfHires->height() / height();
@@ -1306,204 +1248,203 @@ void Bitmap::clearRect(const IntRect &rect)
     }
 
     p->fillRect(rect, Vec4());
-    
+
     p->onModified();
 }
 
 void Bitmap::blur()
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
-        p->selfHires->blur();
-    }
+
+    if (hasHires()) { p->selfHires->blur(); }
 
     // TODO: Is there some kind of blur radius that we need to handle for high-res mode?
 
-    Quad &quad = shState->gpQuad();
+    Quad& quad = shState->gpQuad();
     FloatRect rect(0, 0, width(), height());
     quad.setTexPosRect(rect, rect);
-    
+
     TEXFBO auxTex = shState->texPool().request(width(), height());
-    
-    BlurShader &shader = shState->shaders().blur;
-    BlurShader::HPass &pass1 = shader.pass1;
-    BlurShader::VPass &pass2 = shader.pass2;
-    
+
+    BlurShader& shader = shState->shaders().blur;
+    BlurShader::HPass& pass1 = shader.pass1;
+    BlurShader::VPass& pass2 = shader.pass2;
+
     glState.blend.pushSet(false);
     glState.viewport.pushSet(IntRect(0, 0, width(), height()));
-    
+
     TEX::bind(p->gl.tex);
     FBO::bind(auxTex.fbo);
-    
+
     pass1.bind();
     pass1.setTexSize(Vec2i(width(), height()));
     pass1.applyViewportProj();
-    
+
     quad.draw();
-    
+
     TEX::bind(auxTex.tex);
     p->bindFBO();
-    
+
     pass2.bind();
     pass2.setTexSize(Vec2i(width(), height()));
     pass2.applyViewportProj();
-    
+
     quad.draw();
-    
+
     glState.viewport.pop();
     glState.blend.pop();
-    
+
     shState->texPool().release(auxTex);
-    
+
     p->onModified();
 }
 
 void Bitmap::radialBlur(int angle, int divisions)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
+
+    if (hasHires())
+    {
         p->selfHires->radialBlur(angle, divisions);
         return;
     }
 
-    angle     = clamp<int>(angle, 0, 359);
+    angle = clamp<int>(angle, 0, 359);
     divisions = clamp<int>(divisions, 2, 100);
-    
+
     const int _width = width();
     const int _height = height();
-    
-    float angleStep = (float) angle / (divisions-1);
-    float opacity   = 1.0f / divisions;
-    float baseAngle = -((float) angle / 2);
-    
+
+    float angleStep = (float)angle / (divisions - 1);
+    float opacity = 1.0f / divisions;
+    float baseAngle = -((float)angle / 2);
+
     ColorQuadArray qArray;
     qArray.resize(5);
-    
-    std::vector<Vertex> &vert = qArray.vertices;
-    
+
+    std::vector<Vertex>& vert = qArray.vertices;
+
     int i = 0;
-    
+
     /* Center */
     FloatRect texRect(0, 0, _width, _height);
     FloatRect posRect(0, 0, _width, _height);
-    
-    i += Quad::setTexPosRect(&vert[i*4], texRect, posRect);
-    
+
+    i += Quad::setTexPosRect(&vert[i * 4], texRect, posRect);
+
     /* Upper */
     posRect = FloatRect(0, 0, _width, -_height);
-    
-    i += Quad::setTexPosRect(&vert[i*4], texRect, posRect);
-    
+
+    i += Quad::setTexPosRect(&vert[i * 4], texRect, posRect);
+
     /* Lower */
-    posRect = FloatRect(0, _height*2, _width, -_height);
-    
-    i += Quad::setTexPosRect(&vert[i*4], texRect, posRect);
-    
+    posRect = FloatRect(0, _height * 2, _width, -_height);
+
+    i += Quad::setTexPosRect(&vert[i * 4], texRect, posRect);
+
     /* Left */
     posRect = FloatRect(0, 0, -_width, _height);
-    
-    i += Quad::setTexPosRect(&vert[i*4], texRect, posRect);
-    
+
+    i += Quad::setTexPosRect(&vert[i * 4], texRect, posRect);
+
     /* Right */
-    posRect = FloatRect(_width*2, 0, -_width, _height);
-    
-    i += Quad::setTexPosRect(&vert[i*4], texRect, posRect);
-    
-    for (int i = 0; i < 4*5; ++i)
+    posRect = FloatRect(_width * 2, 0, -_width, _height);
+
+    i += Quad::setTexPosRect(&vert[i * 4], texRect, posRect);
+
+    for (int i = 0; i < 4 * 5; ++i)
         vert[i].color = Vec4(1, 1, 1, opacity);
-    
+
     qArray.commit();
-    
+
     TEXFBO newTex = shState->texPool().request(_width, _height);
-    
+
     FBO::bind(newTex.fbo);
-    
+
     glState.clearColor.pushSet(Vec4());
     FBO::clear();
-    
+
     Transform trans;
     trans.setOrigin(Vec2(_width / 2.0f, _height / 2.0f));
     trans.setPosition(Vec2(_width / 2.0f, _height / 2.0f));
-    
+
     glState.blendMode.pushSet(BlendAddition);
-    
-    SimpleMatrixShader &shader = shState->shaders().simpleMatrix;
+
+    SimpleMatrixShader& shader = shState->shaders().simpleMatrix;
     shader.bind();
-    
+
     p->bindTexture(shader, false);
     TEX::setSmooth(true);
-    
+
     p->pushSetViewport(shader);
-    
+
     for (int i = 0; i < divisions; ++i)
     {
-        trans.setRotation(baseAngle + i*angleStep);
+        trans.setRotation(baseAngle + i * angleStep);
         shader.setMatrix(trans.getMatrix());
         qArray.draw();
     }
-    
+
     p->popViewport();
-    
+
     TEX::setSmooth(false);
-    
+
     glState.blendMode.pop();
     glState.clearColor.pop();
-    
+
     shState->texPool().release(p->gl);
     p->gl = newTex;
-    
+
     p->onModified();
 }
 
 void Bitmap::clear()
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
-        p->selfHires->clear();
-    }
+
+    if (hasHires()) { p->selfHires->clear(); }
 
     p->bindFBO();
-    
+
     glState.clearColor.pushSet(Vec4());
-    
+
     FBO::clear();
-    
+
     glState.clearColor.pop();
-    
+
     p->clearTaintedArea();
-    
+
     p->onModified();
 }
 
-static uint32_t &getPixelAt(SDL_Surface *surf, SDL_PixelFormat *form, int x, int y)
+static uint32_t& getPixelAt(SDL_Surface* surf, SDL_PixelFormat* form, int x, int y)
 {
-    size_t offset = x*form->BytesPerPixel + y*surf->pitch;
-    uint8_t *bytes = (uint8_t*) surf->pixels + offset;
-    
-    return *((uint32_t*) bytes);
+    size_t offset = x * form->BytesPerPixel + y * surf->pitch;
+    uint8_t* bytes = (uint8_t*)surf->pixels + offset;
+
+    return *((uint32_t*)bytes);
 }
 
 Color Bitmap::getPixel(int x, int y) const
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling getPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+
+    if (hasHires())
+    {
+        Debug() << "GAME BUG: Game is calling getPixel on low-res Bitmap; you may want to patch the game to improve "
+                   "graphics quality.";
 
         int xHires = x * p->selfHires->width() / width();
         int yHires = y * p->selfHires->height() / height();
@@ -1513,7 +1454,8 @@ Color Bitmap::getPixel(int x, int y) const
         int w = p->selfHires->width() / width();
         int h = p->selfHires->height() / height();
 
-        if (w >= 1 && h >= 1) {
+        if (w >= 1 && h >= 1)
+        {
             double rSum = 0.;
             double gSum = 0.;
             double bSum = 0.;
@@ -1522,10 +1464,13 @@ Color Bitmap::getPixel(int x, int y) const
             long long rgbCount = 0;
             long long aCount = 0;
 
-            for (int thisX = xHires; thisX < xHires+w && thisX < p->selfHires->width(); thisX++) {
-                for (int thisY = yHires; thisY < yHires+h && thisY < p->selfHires->height(); thisY++) {
+            for (int thisX = xHires; thisX < xHires + w && thisX < p->selfHires->width(); thisX++)
+            {
+                for (int thisY = yHires; thisY < yHires + h && thisY < p->selfHires->height(); thisY++)
+                {
                     Color thisColor = p->selfHires->getPixel(thisX, thisY);
-                    if (thisColor.getAlpha() >= 1.0) {
+                    if (thisColor.getAlpha() >= 1.0)
+                    {
                         rSum += thisColor.getRed();
                         gSum += thisColor.getGreen();
                         bSum += thisColor.getBlue();
@@ -1545,39 +1490,38 @@ Color Bitmap::getPixel(int x, int y) const
         }
     }
 
-    if (x < 0 || y < 0 || x >= width() || y >= height())
-        return Vec4();
+    if (x < 0 || y < 0 || x >= width() || y >= height()) return Vec4();
 
     if (!p->surface)
     {
         p->allocSurface();
-        
+
         FBO::bind(p->gl.fbo);
-        
+
         glState.viewport.pushSet(IntRect(0, 0, width(), height()));
-        
+
         gl.ReadPixels(0, 0, width(), height(), GL_RGBA, GL_UNSIGNED_BYTE, p->surface->pixels);
-        
+
         glState.viewport.pop();
     }
-    
+
     uint32_t pixel = getPixelAt(p->surface, p->format, x, y);
-    
-    return Color((pixel >> p->format->Rshift) & 0xFF,
-                 (pixel >> p->format->Gshift) & 0xFF,
-                 (pixel >> p->format->Bshift) & 0xFF,
-                 (pixel >> p->format->Ashift) & 0xFF);
+
+    return Color((pixel >> p->format->Rshift) & 0xFF, (pixel >> p->format->Gshift) & 0xFF,
+                 (pixel >> p->format->Bshift) & 0xFF, (pixel >> p->format->Ashift) & 0xFF);
 }
 
-void Bitmap::setPixel(int x, int y, const Color &color)
+void Bitmap::setPixel(int x, int y, const Color& color)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling setPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+
+    if (hasHires())
+    {
+        Debug() << "GAME BUG: Game is calling setPixel on low-res Bitmap; you may want to patch the game to improve "
+                   "graphics quality.";
 
         int xHires = x * p->selfHires->width() / width();
         int yHires = y * p->selfHires->height() / height();
@@ -1585,308 +1529,309 @@ void Bitmap::setPixel(int x, int y, const Color &color)
         int w = p->selfHires->width() / width();
         int h = p->selfHires->height() / height();
 
-        if (w >= 1 && h >= 1) {
-            for (int thisX = xHires; thisX < xHires+w && thisX < p->selfHires->width(); thisX++) {
-                for (int thisY = yHires; thisY < yHires+h && thisY < p->selfHires->height(); thisY++) {
+        if (w >= 1 && h >= 1)
+        {
+            for (int thisX = xHires; thisX < xHires + w && thisX < p->selfHires->width(); thisX++)
+            {
+                for (int thisY = yHires; thisY < yHires + h && thisY < p->selfHires->height(); thisY++)
+                {
                     p->selfHires->setPixel(thisX, thisY, color);
                 }
             }
         }
     }
 
-    uint8_t pixel[] =
-    {
-        (uint8_t) clamp<double>(color.red,   0, 255),
-        (uint8_t) clamp<double>(color.green, 0, 255),
-        (uint8_t) clamp<double>(color.blue,  0, 255),
-        (uint8_t) clamp<double>(color.alpha, 0, 255)
-    };
-    
+    uint8_t pixel[] = {(uint8_t)clamp<double>(color.red, 0, 255), (uint8_t)clamp<double>(color.green, 0, 255),
+                       (uint8_t)clamp<double>(color.blue, 0, 255), (uint8_t)clamp<double>(color.alpha, 0, 255)};
+
     TEX::bind(p->gl.tex);
     TEX::uploadSubImage(x, y, 1, 1, &pixel, GL_RGBA);
-    
+
     p->addTaintedArea(IntRect(x, y, 1, 1));
-    
+
     /* Setting just a single pixel is no reason to throw away the
      * whole cached surface; we can just apply the same change */
-    
+
     if (p->surface)
     {
-        uint32_t &surfPixel = getPixelAt(p->surface, p->format, x, y);
+        uint32_t& surfPixel = getPixelAt(p->surface, p->format, x, y);
         surfPixel = SDL_MapRGBA(p->format, pixel[0], pixel[1], pixel[2], pixel[3]);
     }
-    
+
     p->onModified(false);
 }
 
-bool Bitmap::getRaw(void *output, int output_size)
+bool Bitmap::getRaw(void* output, int output_size)
 {
-    if (output_size != width()*height()*4) return false;
-    
+    if (output_size != width() * height() * 4) return false;
+
     guardDisposed();
-    
-    if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling getRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+
+    if (hasHires())
+    {
+        Debug() << "GAME BUG: Game is calling getRaw on low-res Bitmap; you may want to patch the game to improve "
+                   "graphics quality.";
     }
 
-    if (!p->animation.enabled && (p->surface || p->megaSurface)) {
-        void *src = (p->megaSurface) ? p->megaSurface->pixels : p->surface->pixels;
+    if (!p->animation.enabled && (p->surface || p->megaSurface))
+    {
+        void* src = (p->megaSurface) ? p->megaSurface->pixels : p->surface->pixels;
         memcpy(output, src, output_size);
     }
-    else {
+    else
+    {
         FBO::bind(getGLTypes().fbo);
-        gl.ReadPixels(0,0,width(),height(),GL_RGBA,GL_UNSIGNED_BYTE,output);
+        gl.ReadPixels(0, 0, width(), height(), GL_RGBA, GL_UNSIGNED_BYTE, output);
     }
     return true;
 }
 
-void Bitmap::replaceRaw(void *pixel_data, int size)
+void Bitmap::replaceRaw(void* pixel_data, int size)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling replaceRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+
+    if (hasHires())
+    {
+        Debug() << "GAME BUG: Game is calling replaceRaw on low-res Bitmap; you may want to patch the game to improve "
+                   "graphics quality.";
     }
 
     int w = width();
     int h = height();
-    int requiredsize = w*h*4;
-    
-    if (size != w*h*4)
-        throw Exception(Exception::MKXPError, "Replacement bitmap data is not large enough (given %i bytes, need %i)", size, requiredsize);
-    
+    int requiredsize = w * h * 4;
+
+    if (size != w * h * 4)
+        throw Exception(Exception::MKXPError, "Replacement bitmap data is not large enough (given %i bytes, need %i)",
+                        size, requiredsize);
+
     TEX::bind(getGLTypes().tex);
     TEX::uploadImage(w, h, pixel_data, GL_RGBA);
-    
-    taintArea(IntRect(0,0,w,h));
+
+    taintArea(IntRect(0, 0, w, h));
     p->onModified();
 }
 
-void Bitmap::saveToFile(const char *filename)
+void Bitmap::saveToFile(const char* filename)
 {
     guardDisposed();
-    
-    if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling saveToFile on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+
+    if (hasHires())
+    {
+        Debug() << "GAME BUG: Game is calling saveToFile on low-res Bitmap; you may want to patch the game to improve "
+                   "graphics quality.";
     }
 
-    SDL_Surface *surf;
-    
-    if (p->surface || p->megaSurface) {
-        surf = (p->surface) ? p->surface : p->megaSurface;
-    }
-    else {
-        surf = SDL_CreateRGBSurface(0, width(), height(),p->format->BitsPerPixel, p->format->Rmask,p->format->Gmask,p->format->Bmask,p->format->Amask);
-        
-        if (!surf)
-            throw Exception(Exception::SDLError, "Failed to prepare bitmap for saving: %s", SDL_GetError());
-        
+    SDL_Surface* surf;
+
+    if (p->surface || p->megaSurface) { surf = (p->surface) ? p->surface : p->megaSurface; }
+    else
+    {
+        surf = SDL_CreateRGBSurface(0, width(), height(), p->format->BitsPerPixel, p->format->Rmask, p->format->Gmask,
+                                    p->format->Bmask, p->format->Amask);
+
+        if (!surf) throw Exception(Exception::SDLError, "Failed to prepare bitmap for saving: %s", SDL_GetError());
+
         getRaw(surf->pixels, surf->w * surf->h * 4);
     }
-    
+
     // Try and determine the intended image format from the filename extension
-    const char *period = strrchr(filename, '.');
+    const char* period = strrchr(filename, '.');
     int filetype = 0;
-    if (period) {
+    if (period)
+    {
         period++;
         std::string ext;
-        for (int i = 0; i < (int)strlen(period); i++) {
+        for (int i = 0; i < (int)strlen(period); i++)
+        {
             ext += tolower(period[i]);
         }
-        
-        if (!ext.compare("png")) {
-            filetype = 1;
-        }
-        else if (!ext.compare("jpg") || !ext.compare("jpeg")) {
-            filetype = 2;
-        }
+
+        if (!ext.compare("png")) { filetype = 1; }
+        else if (!ext.compare("jpg") || !ext.compare("jpeg")) { filetype = 2; }
     }
-    
+
     std::string fn_normalized = shState->fileSystem().normalize(filename, 1, 1);
     int rc;
-    switch (filetype) {
-        case 2:
-            rc = IMG_SaveJPG(surf, fn_normalized.c_str(), 90);
-            break;
-        case 1:
-            rc = IMG_SavePNG(surf, fn_normalized.c_str());
-            break;
-        case 0: default:
-            rc = SDL_SaveBMP(surf, fn_normalized.c_str());
-            break;
+    switch (filetype)
+    {
+    case 2:
+        rc = IMG_SaveJPG(surf, fn_normalized.c_str(), 90);
+        break;
+    case 1:
+        rc = IMG_SavePNG(surf, fn_normalized.c_str());
+        break;
+    case 0:
+    default:
+        rc = SDL_SaveBMP(surf, fn_normalized.c_str());
+        break;
     }
-    
-    if (!p->surface && !p->megaSurface)
-        SDL_FreeSurface(surf);
-    
+
+    if (!p->surface && !p->megaSurface) SDL_FreeSurface(surf);
+
     if (rc) throw Exception(Exception::SDLError, "%s", SDL_GetError());
 }
 
 void Bitmap::hueChange(int hue)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
+
+    if (hasHires())
+    {
         p->selfHires->hueChange(hue);
         return;
     }
 
-    if ((hue % 360) == 0)
-        return;
-    
+    if ((hue % 360) == 0) return;
+
     TEXFBO newTex = shState->texPool().request(width(), height());
-    
+
     FloatRect texRect(rect());
-    
-    Quad &quad = shState->gpQuad();
+
+    Quad& quad = shState->gpQuad();
     quad.setTexPosRect(texRect, texRect);
     quad.setColor(Vec4(1, 1, 1, 1));
-    
-    HueShader &shader = shState->shaders().hue;
+
+    HueShader& shader = shState->shaders().hue;
     shader.bind();
     /* Shader expects normalized value */
     shader.setHueAdjust(wrapRange(hue, 0, 359) / 360.0f);
-    
+
     FBO::bind(newTex.fbo);
     p->pushSetViewport(shader);
     p->bindTexture(shader, false);
-    
+
     p->blitQuad(quad);
-    
+
     p->popViewport();
-    
+
     TEX::unbind();
-    
+
     shState->texPool().release(p->gl);
     p->gl = newTex;
-    
+
     p->onModified();
 }
 
-void Bitmap::drawText(int x, int y,
-                      int width, int height,
-                      const char *str, int align)
+void Bitmap::drawText(int x, int y, int width, int height, const char* str, int align)
 {
     drawText(IntRect(x, y, width, height), str, align);
 }
 
-static std::string fixupString(const char *str)
+static std::string fixupString(const char* str)
 {
     std::string s(str);
-    
+
     /* RMXP actually draws LF as a "missing gylph" box,
      * but since we might have accidentally converted CRs
      * to LFs when editing scripts on a Unix OS, treat them
      * as white space too */
     for (size_t i = 0; i < s.size(); ++i)
-        if (s[i] == '\r' || s[i] == '\n')
-            s[i] = ' ';
-    
+        if (s[i] == '\r' || s[i] == '\n') s[i] = ' ';
+
     return s;
 }
 
-static void applyShadow(SDL_Surface *&in, const SDL_PixelFormat &fm, const SDL_Color &c)
+static void applyShadow(SDL_Surface*& in, const SDL_PixelFormat& fm, const SDL_Color& c)
 {
-    SDL_Surface *out = SDL_CreateRGBSurface
-    (0, in->w+1, in->h+1, fm.BitsPerPixel, fm.Rmask, fm.Gmask, fm.Bmask, fm.Amask);
-    
+    SDL_Surface* out =
+        SDL_CreateRGBSurface(0, in->w + 1, in->h + 1, fm.BitsPerPixel, fm.Rmask, fm.Gmask, fm.Bmask, fm.Amask);
+
     float fr = c.r / 255.0f;
     float fg = c.g / 255.0f;
     float fb = c.b / 255.0f;
-    
+
     /* We allocate an output surface one pixel wider and higher than the input,
      * (implicitly) blit a copy of the input with RGB values set to black into
      * it with x/y offset by 1, then blend the input surface over it at origin
      * (0,0) using the bitmap blit equation (see shader/bitmapBlit.frag) */
-    
-    for (int y = 0; y < in->h+1; ++y)
-        for (int x = 0; x < in->w+1; ++x)
+
+    for (int y = 0; y < in->h + 1; ++y)
+        for (int x = 0; x < in->w + 1; ++x)
         {
             /* src: input pixel, shd: shadow pixel */
             uint32_t src = 0, shd = 0;
-            
+
             /* Output pixel location */
-            uint32_t *outP = ((uint32_t*) ((uint8_t*) out->pixels + y*out->pitch)) + x;
-            
-            if (y < in->h && x < in->w)
-                src = ((uint32_t*) ((uint8_t*) in->pixels + y*in->pitch))[x];
-            
-            if (y > 0 && x > 0)
-                shd = ((uint32_t*) ((uint8_t*) in->pixels + (y-1)*in->pitch))[x-1];
-            
+            uint32_t* outP = ((uint32_t*)((uint8_t*)out->pixels + y * out->pitch)) + x;
+
+            if (y < in->h && x < in->w) src = ((uint32_t*)((uint8_t*)in->pixels + y * in->pitch))[x];
+
+            if (y > 0 && x > 0) shd = ((uint32_t*)((uint8_t*)in->pixels + (y - 1) * in->pitch))[x - 1];
+
             /* Set shadow pixel RGB values to 0 (black) */
             shd &= fm.Amask;
-            
+
             if (x == 0 || y == 0)
             {
                 *outP = src;
                 continue;
             }
-            
+
             if (x == in->w || y == in->h)
             {
                 *outP = shd;
                 continue;
             }
-            
+
             /* Input and shadow alpha values */
             uint8_t srcA, shdA;
             srcA = (src & fm.Amask) >> fm.Ashift;
             shdA = (shd & fm.Amask) >> fm.Ashift;
-            
+
             if (srcA == 255 || shdA == 0)
             {
                 *outP = src;
                 continue;
             }
-            
+
             if (srcA == 0 && shdA == 0)
             {
                 *outP = 0;
                 continue;
             }
-            
+
             float fSrcA = srcA / 255.0f;
             float fShdA = shdA / 255.0f;
-            
+
             /* Because opacity == 1, co1 == fSrcA */
             float co2 = fShdA * (1.0f - fSrcA);
             /* Result alpha */
             float fa = fSrcA + co2;
             /* Temp value to simplify arithmetic below */
             float co3 = fSrcA / fa;
-            
+
             /* Result colors */
             uint8_t r, g, b, a;
-            
+
             r = clamp<float>(fr * co3, 0, 1) * 255.0f;
             g = clamp<float>(fg * co3, 0, 1) * 255.0f;
             b = clamp<float>(fb * co3, 0, 1) * 255.0f;
             a = clamp<float>(fa, 0, 1) * 255.0f;
-            
+
             *outP = SDL_MapRGBA(&fm, r, g, b, a);
         }
-    
+
     /* Store new surface in the input pointer */
     SDL_FreeSurface(in);
     in = out;
 }
 
-void Bitmap::drawText(const IntRect &rect, const char *str, int align)
+void Bitmap::drawText(const IntRect& rect, const char* str, int align)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
-    if (hasHires()) {
-        Font &loresFont = getFont();
-        Font &hiresFont = p->selfHires->getFont();
+
+    if (hasHires())
+    {
+        Font& loresFont = getFont();
+        Font& hiresFont = p->selfHires->getFont();
         // Disable the illegal font size check when creating a high-res font.
         hiresFont.setSize(loresFont.getSize() * p->selfHires->width() / width(), false);
         hiresFont.setBold(loresFont.getBold());
@@ -1906,58 +1851,53 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
 
     std::string fixed = fixupString(str);
     str = fixed.c_str();
-    
-    if (*str == '\0')
-        return;
-    
-    if (str[0] == ' ' && str[1] == '\0')
-        return;
-    
-    TTF_Font *font = p->font->getSdlFont();
-    const Color &fontColor = p->font->getColor();
-    const Color &outColor = p->font->getOutColor();
-    
+
+    if (*str == '\0') return;
+
+    if (str[0] == ' ' && str[1] == '\0') return;
+
+    TTF_Font* font = p->font->getSdlFont();
+    const Color& fontColor = p->font->getColor();
+    const Color& outColor = p->font->getOutColor();
+
     SDL_Color c = fontColor.toSDLColor();
     c.a = 255;
-    
+
     float txtAlpha = fontColor.norm.w;
-    
-    SDL_Surface *txtSurf;
-    
+
+    SDL_Surface* txtSurf;
+
     if (p->font->isSolid())
         txtSurf = TTF_RenderUTF8_Solid(font, str, c);
     else
         txtSurf = TTF_RenderUTF8_Blended(font, str, c);
-    
+
     p->ensureFormat(txtSurf, SDL_PIXELFORMAT_ABGR8888);
-    
+
     int rawTxtSurfH = txtSurf->h;
-    
-    if (p->font->getShadow())
-        applyShadow(txtSurf, *p->format, c);
-    
+
+    if (p->font->getShadow()) applyShadow(txtSurf, *p->format, c);
+
     /* outline using TTF_Outline and blending it together with SDL_BlitSurface
      * FIXME: outline is forced to have the same opacity as the font color */
     if (p->font->getOutline())
     {
         SDL_Color co = outColor.toSDLColor();
         co.a = 255;
-        SDL_Surface *outline;
+        SDL_Surface* outline;
         // Handle high-res for outline.
         int scaledOutlineSize = OUTLINE_SIZE;
-        if (p->selfLores) {
-            scaledOutlineSize = scaledOutlineSize * width() / p->selfLores->width();
-        }
+        if (p->selfLores) { scaledOutlineSize = scaledOutlineSize * width() / p->selfLores->width(); }
         /* set the next font render to render the outline */
         TTF_SetFontOutline(font, scaledOutlineSize);
         if (p->font->isSolid())
             outline = TTF_RenderUTF8_Solid(font, str, co);
         else
             outline = TTF_RenderUTF8_Blended(font, str, co);
-        
+
         p->ensureFormat(outline, SDL_PIXELFORMAT_ABGR8888);
         SDL_Rect outRect = {scaledOutlineSize, scaledOutlineSize, txtSurf->w, txtSurf->h};
-        
+
         SDL_SetSurfaceBlendMode(txtSurf, SDL_BLENDMODE_BLEND);
         SDL_BlitSurface(txtSurf, NULL, outline, &outRect);
         SDL_FreeSurface(txtSurf);
@@ -1965,41 +1905,39 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
         /* reset outline to 0 */
         TTF_SetFontOutline(font, 0);
     }
-    
+
     int alignX = rect.x;
-    
+
     switch (align)
     {
-        default:
-        case Left :
-            break;
-            
-        case Center :
-            alignX += (rect.w - txtSurf->w) / 2;
-            break;
-            
-        case Right :
-            alignX += rect.w - txtSurf->w;
-            break;
+    default:
+    case Left:
+        break;
+
+    case Center:
+        alignX += (rect.w - txtSurf->w) / 2;
+        break;
+
+    case Right:
+        alignX += rect.w - txtSurf->w;
+        break;
     }
-    
-    if (alignX < rect.x)
-        alignX = rect.x;
-    
+
+    if (alignX < rect.x) alignX = rect.x;
+
     int alignY = rect.y + (rect.h - rawTxtSurfH) / 2;
-    
-    float squeeze = (float) rect.w / txtSurf->w;
-    
-    if (squeeze > 1)
-        squeeze = 1;
-    
+
+    float squeeze = (float)rect.w / txtSurf->w;
+
+    if (squeeze > 1) squeeze = 1;
+
     FloatRect posRect(alignX, alignY, txtSurf->w * squeeze, txtSurf->h);
-    
+
     Vec2i gpTexSize;
     shState->ensureTexSize(txtSurf->w, txtSurf->h, gpTexSize);
-    
+
     bool fastBlit = !p->touchesTaintedArea(posRect) && txtAlpha == 1.0f;
-    
+
     if (fastBlit)
     {
         if (squeeze == 1.0f && !shState->config().subImageFix)
@@ -2013,48 +1951,44 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
             btmRect.x = btmRect.y = 0;
             btmRect.w = width();
             btmRect.h = height();
-            
+
             SDL_Rect txtRect;
             txtRect.x = posRect.x;
             txtRect.y = posRect.y;
             txtRect.w = posRect.w;
             txtRect.h = posRect.h;
-            
+
             SDL_Rect inters;
-            
+
             /* If we have no intersection at all,
              * there's nothing to upload to begin with */
             if (SDL_IntersectRect(&btmRect, &txtRect, &inters))
             {
                 bool subImage = false;
                 int subSrcX = 0, subSrcY = 0;
-                
+
                 if (inters.w != txtRect.w || inters.h != txtRect.h)
                 {
                     /* Clip the text surface */
                     subSrcX = inters.x - txtRect.x;
                     subSrcY = inters.y - txtRect.y;
                     subImage = true;
-                    
+
                     posRect.x = inters.x;
                     posRect.y = inters.y;
                     posRect.w = inters.w;
                     posRect.h = inters.h;
                 }
-                
+
                 TEX::bind(p->gl.tex);
-                
+
                 if (!subImage)
                 {
-                    TEX::uploadSubImage(posRect.x, posRect.y,
-                                        posRect.w, posRect.h,
-                                        txtSurf->pixels, GL_RGBA);
+                    TEX::uploadSubImage(posRect.x, posRect.y, posRect.w, posRect.h, txtSurf->pixels, GL_RGBA);
                 }
                 else
                 {
-                    GLMeta::subRectImageUpload(txtSurf->w, subSrcX, subSrcY,
-                                               posRect.x, posRect.y,
-                                               posRect.w, posRect.h,
+                    GLMeta::subRectImageUpload(txtSurf->w, subSrcX, subSrcY, posRect.x, posRect.y, posRect.w, posRect.h,
                                                txtSurf, GL_RGBA);
                     GLMeta::subRectImageEnd();
                 }
@@ -2063,15 +1997,14 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
         else
         {
             /* Squeezing involved: need to use intermediary TexFBO */
-            TEXFBO &gpTF = shState->gpTexFBO(txtSurf->w, txtSurf->h);
-            
+            TEXFBO& gpTF = shState->gpTexFBO(txtSurf->w, txtSurf->h);
+
             TEX::bind(gpTF.tex);
             TEX::uploadSubImage(0, 0, txtSurf->w, txtSurf->h, txtSurf->pixels, GL_RGBA);
-            
+
             GLMeta::blitBegin(p->gl);
             GLMeta::blitSource(gpTF);
-            GLMeta::blitRectangle(IntRect(0, 0, txtSurf->w, txtSurf->h),
-                                  posRect, true);
+            GLMeta::blitRectangle(IntRect(0, 0, txtSurf->w, txtSurf->h), posRect, true);
             GLMeta::blitEnd();
         }
     }
@@ -2079,133 +2012,123 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
     {
         /* Aquire a partial copy of the destination
          * buffer we're about to render to */
-        TEXFBO &gpTex2 = shState->gpTexFBO(posRect.w, posRect.h);
-        
+        TEXFBO& gpTex2 = shState->gpTexFBO(posRect.w, posRect.h);
+
         GLMeta::blitBegin(gpTex2);
         GLMeta::blitSource(p->gl);
         GLMeta::blitRectangle(posRect, Vec2i());
         GLMeta::blitEnd();
-        
-        FloatRect bltRect(0, 0,
-                          (float) (gpTexSize.x * squeeze) / gpTex2.width,
-                          (float) gpTexSize.y / gpTex2.height);
-        
-        BltShader &shader = shState->shaders().blt;
+
+        FloatRect bltRect(0, 0, (float)(gpTexSize.x * squeeze) / gpTex2.width, (float)gpTexSize.y / gpTex2.height);
+
+        BltShader& shader = shState->shaders().blt;
         shader.bind();
         shader.setTexSize(gpTexSize);
         shader.setSource();
         shader.setDestination(gpTex2.tex);
         shader.setSubRect(bltRect);
         shader.setOpacity(txtAlpha);
-        
+
         shState->bindTex();
         TEX::uploadSubImage(0, 0, txtSurf->w, txtSurf->h, txtSurf->pixels, GL_RGBA);
         TEX::setSmooth(true);
-        
-        Quad &quad = shState->gpQuad();
+
+        Quad& quad = shState->gpQuad();
         quad.setTexRect(FloatRect(0, 0, txtSurf->w, txtSurf->h));
         quad.setPosRect(posRect);
-        
+
         p->bindFBO();
         p->pushSetViewport(shader);
-        
+
         p->blitQuad(quad);
-        
+
         p->popViewport();
     }
-    
+
     SDL_FreeSurface(txtSurf);
     p->addTaintedArea(posRect);
-    
+
     p->onModified();
 }
 
 /* http://www.lemoda.net/c/utf8-to-ucs2/index.html */
-static uint16_t utf8_to_ucs2(const char *_input,
-                             const char **end_ptr)
+static uint16_t utf8_to_ucs2(const char* _input, const char** end_ptr)
 {
-    const unsigned char *input =
-    reinterpret_cast<const unsigned char*>(_input);
+    const unsigned char* input = reinterpret_cast<const unsigned char*>(_input);
     *end_ptr = _input;
-    
-    if (input[0] == 0)
-        return -1;
-    
+
+    if (input[0] == 0) return -1;
+
     if (input[0] < 0x80)
     {
         *end_ptr = _input + 1;
-        
+
         return input[0];
     }
-    
+
     if ((input[0] & 0xE0) == 0xE0)
     {
-        if (input[1] == 0 || input[2] == 0)
-            return -1;
-        
+        if (input[1] == 0 || input[2] == 0) return -1;
+
         *end_ptr = _input + 3;
-        
-        return (input[0] & 0x0F)<<12 |
-        (input[1] & 0x3F)<<6  |
-        (input[2] & 0x3F);
+
+        return (input[0] & 0x0F) << 12 | (input[1] & 0x3F) << 6 | (input[2] & 0x3F);
     }
-    
+
     if ((input[0] & 0xC0) == 0xC0)
     {
-        if (input[1] == 0)
-            return -1;
-        
+        if (input[1] == 0) return -1;
+
         *end_ptr = _input + 2;
-        
-        return (input[0] & 0x1F)<<6  |
-        (input[1] & 0x3F);
+
+        return (input[0] & 0x1F) << 6 | (input[1] & 0x3F);
     }
-    
+
     return -1;
 }
 
-IntRect Bitmap::textSize(const char *str)
+IntRect Bitmap::textSize(const char* str)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
     GUARD_ANIMATED;
-    
+
     // TODO: High-res Bitmap textSize not implemented, but I think it's the same as low-res?
     // Need to double-check this.
 
-    TTF_Font *font = p->font->getSdlFont();
-    
+    TTF_Font* font = p->font->getSdlFont();
+
     std::string fixed = fixupString(str);
     str = fixed.c_str();
-    
+
     int w, h;
     TTF_SizeUTF8(font, str, &w, &h);
-    
+
     /* If str is one character long, *endPtr == 0 */
-    const char *endPtr;
+    const char* endPtr;
     uint16_t ucs2 = utf8_to_ucs2(str, &endPtr);
-    
+
     /* For cursive characters, returning the advance
      * as width yields better results */
-    if (p->font->getItalic() && *endPtr == '\0')
-        TTF_GlyphMetrics(font, ucs2, 0, 0, 0, 0, &w);
-    
+    if (p->font->getItalic() && *endPtr == '\0') TTF_GlyphMetrics(font, ucs2, 0, 0, 0, 0, &w);
+
     return IntRect(0, 0, w, h);
 }
 
 DEF_ATTR_RD_SIMPLE(Bitmap, Font, Font&, *p->font)
 
-void Bitmap::setFont(Font &value)
+void Bitmap::setFont(Font& value)
 {
     // High-res support handled in drawText, not here.
     *p->font = value;
 }
 
-void Bitmap::setInitFont(Font *value)
+void Bitmap::setInitFont(Font* value)
 {
-    if (hasHires()) {
-        Font *hiresFont = new Font(*value);
+    if (hasHires())
+    {
+        Font* hiresFont = new Font(*value);
         // Disable the illegal font size check when creating a high-res font.
         hiresFont->setSize(hiresFont->getSize() * p->selfHires->width() / width(), false);
         p->selfHires->setInitFont(hiresFont);
@@ -2214,27 +2137,22 @@ void Bitmap::setInitFont(Font *value)
     p->font = value;
 }
 
-TEXFBO &Bitmap::getGLTypes() const
-{
-    return p->getGLTypes();
-}
+TEXFBO& Bitmap::getGLTypes() const { return p->getGLTypes(); }
 
-SDL_Surface *Bitmap::surface() const
+SDL_Surface* Bitmap::surface() const
 {
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap surface not implemented";
-    }
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap surface not implemented"; }
 
     return p->surface;
 }
 
-SDL_Surface *Bitmap::megaSurface() const
+SDL_Surface* Bitmap::megaSurface() const
 {
-    if (hasHires()) {
-        if (p->megaSurface) {
-            Debug() << "BUG: High-res Bitmap megaSurface not implemented (low-res has megaSurface)";
-        }
-        if (p->selfHires->megaSurface()) {
+    if (hasHires())
+    {
+        if (p->megaSurface) { Debug() << "BUG: High-res Bitmap megaSurface not implemented (low-res has megaSurface)"; }
+        if (p->selfHires->megaSurface())
+        {
             Debug() << "BUG: High-res Bitmap megaSurface not implemented (high-res has megaSurface)";
         }
     }
@@ -2244,38 +2162,33 @@ SDL_Surface *Bitmap::megaSurface() const
 
 void Bitmap::ensureNonMega() const
 {
-    if (isDisposed())
-        return;
-    
+    if (isDisposed()) return;
+
     GUARD_MEGA;
 }
 
 void Bitmap::ensureNonAnimated() const
 {
-    if (isDisposed())
-        return;
-    
+    if (isDisposed()) return;
+
     GUARD_ANIMATED;
 }
 
 void Bitmap::ensureAnimated() const
 {
-    if (isDisposed())
-        return;
-    
+    if (isDisposed()) return;
+
     GUARD_UNANIMATED;
 }
 
 void Bitmap::stop()
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
     if (!p->animation.playing) return;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap stop not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap stop not implemented"; }
 
     p->animation.stop();
 }
@@ -2283,13 +2196,11 @@ void Bitmap::stop()
 void Bitmap::play()
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
     if (p->animation.playing) return;
 
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap play not implemented";
-    }
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap play not implemented"; }
 
     p->animation.play();
 }
@@ -2297,42 +2208,35 @@ void Bitmap::play()
 bool Bitmap::isPlaying() const
 {
     guardDisposed();
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap isPlaying not implemented";
-    }
 
-    if (!p->animation.playing)
-        return false;
-    
-    if (p->animation.loop)
-        return true;
-    
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap isPlaying not implemented"; }
+
+    if (!p->animation.playing) return false;
+
+    if (p->animation.loop) return true;
+
     return p->animation.currentFrameIRaw() < p->animation.frames.size();
 }
 
 void Bitmap::gotoAndStop(int frame)
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap gotoAndStop not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap gotoAndStop not implemented"; }
 
     p->animation.stop();
     p->animation.seek(frame);
 }
+
 void Bitmap::gotoAndPlay(int frame)
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap gotoAndPlay not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap gotoAndPlay not implemented"; }
 
     p->animation.stop();
     p->animation.seek(frame);
@@ -2342,10 +2246,8 @@ void Bitmap::gotoAndPlay(int frame)
 int Bitmap::numFrames() const
 {
     guardDisposed();
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap numFrames not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap numFrames not implemented"; }
 
     if (!p->animation.enabled) return 1;
     return (int)p->animation.frames.size();
@@ -2354,106 +2256,105 @@ int Bitmap::numFrames() const
 int Bitmap::currentFrameI() const
 {
     guardDisposed();
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap currentFrameI not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap currentFrameI not implemented"; }
 
     if (!p->animation.enabled) return 0;
     return p->animation.currentFrameI();
 }
 
-int Bitmap::addFrame(Bitmap &source, int position)
+int Bitmap::addFrame(Bitmap& source, int position)
 {
     guardDisposed();
-    
-    GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap addFrame dest not implemented";
-    }
 
-    if (source.hasHires()) {
-        Debug() << "BUG: High-res Bitmap addFrame source not implemented";
-    }
+    GUARD_MEGA;
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap addFrame dest not implemented"; }
+
+    if (source.hasHires()) { Debug() << "BUG: High-res Bitmap addFrame source not implemented"; }
 
     if (source.height() != height() || source.width() != width())
         throw Exception(Exception::MKXPError, "Animations with varying dimensions are not supported (%ix%i vs %ix%i)",
                         source.width(), source.height(), width(), height());
-    
+
     TEXFBO newframe = shState->texPool().request(source.width(), source.height());
-    
+
     // Convert the bitmap into an animated bitmap if it isn't already one
-    if (!p->animation.enabled) {
+    if (!p->animation.enabled)
+    {
         p->animation.width = p->gl.width;
         p->animation.height = p->gl.height;
         p->animation.enabled = true;
         p->animation.lastFrame = 0;
         p->animation.playTime = 0;
         p->animation.startTime = 0;
-        
-        if (p->animation.fps <= 0)
-            p->animation.fps = shState->graphics().getFrameRate();
-        
+
+        if (p->animation.fps <= 0) p->animation.fps = shState->graphics().getFrameRate();
+
         p->animation.frames.push_back(p->gl);
-        
-        if (p->surface)
-            SDL_FreeSurface(p->surface);
+
+        if (p->surface) SDL_FreeSurface(p->surface);
         p->gl = TEXFBO();
     }
-    
-    if (source.surface()) {
+
+    if (source.surface())
+    {
         TEX::bind(newframe.tex);
         TEX::uploadImage(source.width(), source.height(), source.surface()->pixels, GL_RGBA);
         SDL_FreeSurface(p->surface);
         p->surface = 0;
     }
-    else {
+    else
+    {
         GLMeta::blitBegin(newframe);
         GLMeta::blitSource(source.getGLTypes());
         GLMeta::blitRectangle(rect(), rect(), true);
         GLMeta::blitEnd();
     }
-    
+
     int ret;
-    
-    if (position < 0) {
+
+    if (position < 0)
+    {
         p->animation.frames.push_back(newframe);
         ret = (int)p->animation.frames.size();
     }
-    else {
-        p->animation.frames.insert(p->animation.frames.begin() + clamp(position, 0, (int)p->animation.frames.size()), newframe);
+    else
+    {
+        p->animation.frames.insert(p->animation.frames.begin() + clamp(position, 0, (int)p->animation.frames.size()),
+                                   newframe);
         ret = position;
     }
-    
+
     return ret;
 }
 
-void Bitmap::removeFrame(int position) {
+void Bitmap::removeFrame(int position)
+{
     guardDisposed();
-    
-    GUARD_UNANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap removeFrame not implemented";
-    }
 
-    int pos = (position < 0) ? (int)p->animation.frames.size() - 1 : clamp(position, 0, (int)(p->animation.frames.size() - 1));
+    GUARD_UNANIMATED;
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap removeFrame not implemented"; }
+
+    int pos = (position < 0) ? (int)p->animation.frames.size() - 1
+                             : clamp(position, 0, (int)(p->animation.frames.size() - 1));
     shState->texPool().release(p->animation.frames[pos]);
     p->animation.frames.erase(p->animation.frames.begin() + pos);
-    
+
     // Change the animated bitmap back to a normal one if there's only one frame left
-    if (p->animation.frames.size() == 1) {
-        
+    if (p->animation.frames.size() == 1)
+    {
+
         p->animation.enabled = false;
         p->animation.playing = false;
         p->animation.width = 0;
         p->animation.height = 0;
         p->animation.lastFrame = 0;
-        
+
         p->gl = p->animation.frames[0];
         p->animation.frames.erase(p->animation.frames.begin());
-        
+
         FBO::bind(p->gl.fbo);
         taintArea(rect());
     }
@@ -2462,55 +2363,52 @@ void Bitmap::removeFrame(int position) {
 void Bitmap::nextFrame()
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap nextFrame not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap nextFrame not implemented"; }
 
     stop();
-    if ((uint32_t)p->animation.lastFrame >= p->animation.frames.size() - 1)  {
+    if ((uint32_t)p->animation.lastFrame >= p->animation.frames.size() - 1)
+    {
         if (!p->animation.loop) return;
         p->animation.lastFrame = 0;
         return;
     }
-    
+
     p->animation.lastFrame++;
 }
 
 void Bitmap::previousFrame()
 {
     guardDisposed();
-    
+
     GUARD_UNANIMATED;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap previousFrame not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap previousFrame not implemented"; }
 
     stop();
-    if (p->animation.lastFrame <= 0) {
-        if (!p->animation.loop) {
+    if (p->animation.lastFrame <= 0)
+    {
+        if (!p->animation.loop)
+        {
             p->animation.lastFrame = 0;
             return;
         }
         p->animation.lastFrame = (int)p->animation.frames.size() - 1;
         return;
     }
-    
+
     p->animation.lastFrame--;
 }
 
 void Bitmap::setAnimationFPS(float FPS)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap setAnimationFPS not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap setAnimationFPS not implemented"; }
 
     bool restart = p->animation.playing;
     p->animation.stop();
@@ -2518,11 +2416,9 @@ void Bitmap::setAnimationFPS(float FPS)
     if (restart) p->animation.play();
 }
 
-std::vector<TEXFBO> &Bitmap::getFrames() const
+std::vector<TEXFBO>& Bitmap::getFrames() const
 {
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap getFrames not implemented";
-    }
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap getFrames not implemented"; }
 
     return p->animation.frames;
 }
@@ -2530,12 +2426,10 @@ std::vector<TEXFBO> &Bitmap::getFrames() const
 float Bitmap::getAnimationFPS() const
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap getAnimationFPS not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap getAnimationFPS not implemented"; }
 
     return p->animation.fps;
 }
@@ -2543,12 +2437,10 @@ float Bitmap::getAnimationFPS() const
 void Bitmap::setLooping(bool loop)
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap setLooping not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap setLooping not implemented"; }
 
     p->animation.loop = loop;
 }
@@ -2556,26 +2448,25 @@ void Bitmap::setLooping(bool loop)
 bool Bitmap::getLooping() const
 {
     guardDisposed();
-    
+
     GUARD_MEGA;
-    
-    if (hasHires()) {
-        Debug() << "BUG: High-res Bitmap getLooping not implemented";
-    }
+
+    if (hasHires()) { Debug() << "BUG: High-res Bitmap getLooping not implemented"; }
 
     return p->animation.loop;
 }
 
-void Bitmap::bindTex(ShaderBase &shader)
+void Bitmap::bindTex(ShaderBase& shader)
 {
     // Hires mode is handled by p->bindTexture.
 
     p->bindTexture(shader);
 }
 
-void Bitmap::taintArea(const IntRect &rect)
+void Bitmap::taintArea(const IntRect& rect)
 {
-    if (hasHires()) {
+    if (hasHires())
+    {
         int destX, destY, destWidth, destHeight;
         destX = rect.x * p->selfHires->width() / width();
         destY = rect.y * p->selfHires->height() / height();
@@ -2588,9 +2479,7 @@ void Bitmap::taintArea(const IntRect &rect)
     p->addTaintedArea(rect);
 }
 
-int Bitmap::maxSize(){
-    return glState.caps.maxTexSize;
-}
+int Bitmap::maxSize() { return glState.caps.maxTexSize; }
 
 // This might look ridiculous, but apparently, it is possible
 // to encounter seemingly empty bitmaps during Graphics::update,
@@ -2606,31 +2495,25 @@ int Bitmap::maxSize(){
 // something like this happening anywhere else, so... I dunno.
 // If a game suddenly explodes during Graphics.update, maybe try
 // breakpointing this?
-bool Bitmap::invalid() const {
-    return p == 0;
-}
+bool Bitmap::invalid() const { return p == 0; }
 
-void Bitmap::assumeRubyGC()
-{
-    p->assumingRubyGC = true;
-}
+void Bitmap::assumeRubyGC() { p->assumingRubyGC = true; }
 
 void Bitmap::releaseResources()
 {
-    if (p->selfHires && !p->assumingRubyGC) {
-        delete p->selfHires;
-    }
+    if (p->selfHires && !p->assumingRubyGC) { delete p->selfHires; }
 
     if (p->megaSurface)
         SDL_FreeSurface(p->megaSurface);
-    else if (p->animation.enabled) {
+    else if (p->animation.enabled)
+    {
         p->animation.enabled = false;
         p->animation.playing = false;
-        for (TEXFBO &tex : p->animation.frames)
+        for (TEXFBO& tex: p->animation.frames)
             shState->texPool().release(tex);
     }
     else
         shState->texPool().release(p->gl);
-    
+
     delete p;
 }

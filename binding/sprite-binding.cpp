@@ -34,19 +34,20 @@ DEF_TYPE(Sprite);
 DEF_ALLOCFUNC(Sprite);
 #endif
 
-RB_METHOD(spriteInitialize) {
+RB_METHOD(spriteInitialize)
+{
     GFX_LOCK;
-    Sprite *s = viewportElementInitialize<Sprite>(argc, argv, self);
-    
+    Sprite* s = viewportElementInitialize<Sprite>(argc, argv, self);
+
     setPrivateData(self, s);
-    
+
     /* Wrap property objects */
     s->initDynAttribs();
-    
+
     wrapProperty(self, &s->getSrcRect(), "src_rect", RectType);
     wrapProperty(self, &s->getColor(), "color", ColorType);
     wrapProperty(self, &s->getTone(), "tone", ToneType);
-    
+
     GFX_UNLOCK;
     return self;
 }
@@ -84,42 +85,45 @@ DEF_GFX_PROP_B(Sprite, Mirror)
 DEF_GFX_PROP_B(Sprite, PatternTile)
 DEF_GFX_PROP_B(Sprite, Invert)
 
-RB_METHOD(spriteWidth) {
+RB_METHOD(spriteWidth)
+{
     RB_UNUSED_PARAM;
-    
-    Sprite *s = getPrivateData<Sprite>(self);
-    
+
+    Sprite* s = getPrivateData<Sprite>(self);
+
     int value = 0;
     GUARD_EXC(value = s->getWidth();)
-    
+
     return rb_fix_new(value);
 }
 
-RB_METHOD(spriteHeight) {
+RB_METHOD(spriteHeight)
+{
     RB_UNUSED_PARAM;
-    
-    Sprite *s = getPrivateData<Sprite>(self);
-    
+
+    Sprite* s = getPrivateData<Sprite>(self);
+
     int value = 0;
     GUARD_EXC(value = s->getHeight();)
-    
+
     return rb_fix_new(value);
 }
 
-void spriteBindingInit() {
+void spriteBindingInit()
+{
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
     rb_define_alloc_func(klass, classAllocate<&SpriteType>);
 #else
     rb_define_alloc_func(klass, SpriteAllocate);
 #endif
-    
+
     disposableBindingInit<Sprite>(klass);
     flashableBindingInit<Sprite>(klass);
     viewportElementBindingInit<Sprite>(klass);
-    
+
     _rb_define_method(klass, "initialize", spriteInitialize);
-    
+
     INIT_PROP_BIND(Sprite, Bitmap, "bitmap");
     INIT_PROP_BIND(Sprite, SrcRect, "src_rect");
     INIT_PROP_BIND(Sprite, X, "x");
@@ -135,12 +139,12 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, BlendType, "blend_type");
     INIT_PROP_BIND(Sprite, Color, "color");
     INIT_PROP_BIND(Sprite, Tone, "tone");
-    
+
     _rb_define_method(klass, "width", spriteWidth);
     _rb_define_method(klass, "height", spriteHeight);
-    
+
     INIT_PROP_BIND(Sprite, BushOpacity, "bush_opacity");
-    
+
     INIT_PROP_BIND(Sprite, Pattern, "pattern");
     INIT_PROP_BIND(Sprite, PatternBlendType, "pattern_blend_type");
     INIT_PROP_BIND(Sprite, PatternTile, "pattern_tile");
@@ -150,7 +154,7 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, PatternZoomX, "pattern_zoom_x");
     INIT_PROP_BIND(Sprite, PatternZoomY, "pattern_zoom_y");
     INIT_PROP_BIND(Sprite, Invert, "invert");
-    
+
     INIT_PROP_BIND(Sprite, WaveAmp, "wave_amp");
     INIT_PROP_BIND(Sprite, WaveLength, "wave_length");
     INIT_PROP_BIND(Sprite, WaveSpeed, "wave_speed");

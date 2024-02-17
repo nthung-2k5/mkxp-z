@@ -24,49 +24,46 @@
 
 #include "serializable.h"
 
-#include <stdint.h>
 #include "sigslot/signal.hpp"
+#include <stdint.h>
 #include <vector>
 
-class Table : public Serializable
+class Table: public Serializable
 {
-public:
-	Table(int x, int y = 1, int z = 1);
-	/* Clone constructor */
-	Table(const Table &other);
-	virtual ~Table() {}
+  public:
+    Table(int x, int y = 1, int z = 1);
+    /* Clone constructor */
+    Table(const Table& other);
 
-	int xSize() const { return xs; }
-	int ySize() const { return ys; }
-	int zSize() const { return zs; }
+    virtual ~Table() {}
 
-	int16_t get(int x, int y = 0, int z = 0) const;
-	void set(int16_t value, int x, int y = 0, int z = 0);
+    int xSize() const { return xs; }
 
-	void resize(int x, int y, int z);
-	void resize(int x, int y);
-	void resize(int x);
+    int ySize() const { return ys; }
 
-	int serialSize() const;
-	void serialize(char *buffer) const;
-	static Table *deserialize(const char *data, int len);
+    int zSize() const { return zs; }
 
-	/* <internal */
-	inline int16_t &at(int x, int y = 0, int z = 0)
-	{
-		return data[xs*ys*z + xs*y + x];
-	}
+    int16_t get(int x, int y = 0, int z = 0) const;
+    void set(int16_t value, int x, int y = 0, int z = 0);
 
-	inline const int16_t &at(int x, int y = 0, int z = 0) const
-	{
-		return data[xs*ys*z + xs*y + x];
-	}
+    void resize(int x, int y, int z);
+    void resize(int x, int y);
+    void resize(int x);
+
+    int serialSize() const;
+    void serialize(char* buffer) const;
+    static Table* deserialize(const char* data, int len);
+
+    /* <internal */
+    inline int16_t& at(int x, int y = 0, int z = 0) { return data[xs * ys * z + xs * y + x]; }
+
+    inline const int16_t& at(int x, int y = 0, int z = 0) const { return data[xs * ys * z + xs * y + x]; }
 
     sigslot::signal<> modified;
 
-private:
-	int xs, ys, zs;
-	std::vector<int16_t> data;
+  private:
+    int xs, ys, zs;
+    std::vector<int16_t> data;
 };
 
 #endif // TABLE_H
