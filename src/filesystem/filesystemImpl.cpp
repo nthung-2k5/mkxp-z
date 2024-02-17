@@ -27,6 +27,11 @@ bool filesystemImpl::fileExists(const char *path) {
     return (fs::exists(stdPath) && !fs::is_directory(stdPath));
 }
 
+bool filesystemImpl::directoryExists(const char *path) {
+    fs::path stdPath(path);
+    return (fs::exists(stdPath) && fs::is_directory(stdPath));
+}
+
 
 // https://stackoverflow.com/questions/2912520/read-file-contents-into-a-string-in-c
 std::string filesystemImpl::contentsOfFileAsString(const char *path) {

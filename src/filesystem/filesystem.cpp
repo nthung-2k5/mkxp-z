@@ -48,18 +48,43 @@
 #include <direct.h>
 #endif
 
-struct SDLRWIoContext {
-  SDL_RWops *ops;
-  std::string filename;
+#ifdef __ANDROID__
+#include <SDL.h>
+#include <jni.h>
 
-  SDLRWIoContext(const char *filename)
-      : ops(SDL_RWFromFile(filename, "r")), filename(filename) {
-    if (!ops)
-      throw Exception(Exception::SDLError, "Failed to open file: %s",
-                      SDL_GetError());
-  }
+// https://stackoverflow.com/a/46871051/13295652
+static jobject getJNIGlobalContext(JNIEnv *env)
+{
+	jclass clsActivityThread = env->FindClass("android/app/ActivityThread");
+	jmethodID midCurrentActivityThread = env->GetStaticMethodID(clsActivityThread, "currentActivityThread", "()Landroid/app/ActivityThread;");
+	jobject activityThread = env->CallStaticObjectMethod(clsActivityThread, midCurrentActivityThread);
 
-  ~SDLRWIoContext() { SDL_RWclose(ops); }
+	jmethodID getApplication = env->GetMethodID(clsActivityThread, "getApplication", "()Landroid/app/Application;");
+	jobject context = env->CallObjectMethod(activityThread, getApplication);
+
+	env->DeleteLocalRef(clsActivityThread);
+	env->DeleteLocalRef(activityThread);
+
+	return context;
+}
+#endif
+
+struct SDLRWIoContext
+{
+	SDL_RWops *ops;
+	std::string filename;
+
+	SDLRWIoContext(const char *filename)
+		: ops(SDL_RWFromFile(filename, "r")), filename(filename)
+	{
+		if (!ops)
+			throw Exception(Exception::SDLError, "Failed to open file: %s", SDL_GetError());
+	}
+
+	~SDLRWIoContext()
+	{
+		SDL_RWclose(ops);
+	}
 };
 
 static PHYSFS_Io *createSDLRWIo(const char *filename);
@@ -294,12 +319,26 @@ static void throwPhysfsError(const char *desc) {
   throw Exception(Exception::PHYSFSError, "%s: %s", desc, englishStr);
 }
 
-FileSystem::FileSystem(const char *argv0, bool allowSymlinks) {
-  if (PHYSFS_init(argv0) == 0)
-    throwPhysfsError("Error initializing PhysFS");
+FileSystem::FileSystem(const char *argv0, bool allowSymlinks)
+{
+#ifdef __ANDROID__
+	// Get JNI environment and context
+	JNIEnv *jenv = (JNIEnv *)SDL_AndroidGetJNIEnv();
+	jobject jctx = getJNIGlobalContext(jenv);
 
-  /* One error (=return 0) turns the whole product to 0 */
+	// PHYSFS_AndroidInit struct
+	PHYSFS_AndroidInit ainit;
+	ainit.jnienv = jenv;
+	ainit.context = jctx;
 
+	if (PHYSFS_init((char *)&ainit) == 0)
+		throwPhysfsError("Error initializing PhysFS");
+#else
+	if (PHYSFS_init(argv0) == 0)
+		throwPhysfsError("Error initializing PhysFS");
+#endif
+
+	// One error (=return 0) turns the whole product to 0
   int er = 1;
 
   er *= PHYSFS_registerArchiver(&RGSS1_Archiver);
@@ -316,7 +355,8 @@ FileSystem::FileSystem(const char *argv0, bool allowSymlinks) {
     PHYSFS_permitSymbolicLinks(1);
 }
 
-FileSystem::~FileSystem() {
+FileSystem::~FileSystem()
+{
   delete p;
 
   if (PHYSFS_deinit() == 0)
@@ -351,6 +391,28 @@ void FileSystem::removePath(const char *path, bool reload) {
     
     if (reload) reloadPathCache();
 }
+
+#ifdef __ANDROID__
+void FileSystem::mountAPKAssets()
+{
+    /* Mount APK file and set root to assets folder */
+    const char *apkPath = PHYSFS_getBaseDir();
+
+    int state = PHYSFS_mount(apkPath, 0, 1);
+
+    if (!state) {
+        PHYSFS_ErrorCode err = PHYSFS_getLastErrorCode();
+        Debug() << "Failed to mount APK" << apkPath << ":" << PHYSFS_getErrorByCode(err);
+    } else {
+        state = PHYSFS_setRoot(apkPath, "/assets");
+        if (!state) {
+            PHYSFS_ErrorCode err = PHYSFS_getLastErrorCode();
+            Debug() << "Failed to set root to \"base.apk/assets\":" << PHYSFS_getErrorByCode(err);
+            PHYSFS_unmount(apkPath);
+        }
+    }
+}
+#endif
 
 struct CacheEnumData {
   FileSystemPrivate *p;
