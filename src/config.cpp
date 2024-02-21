@@ -96,12 +96,24 @@ json::value readConfFile(const char* path)
 {
 
     json::value ret(0);
+#ifndef MKXPZ_BUILD_ANDROID
     if (!mkxp_fs::fileExists(path)) { return json::object({}); }
+#endif
 
     try
     {
+#ifndef MKXPZ_BUILD_ANDROID
         std::string cfg = mkxp_fs::contentsOfFileAsString(path);
         ret = json::parse5(Encoding::convertString(cfg));
+#else
+        SDLRWStream jsonFile(path, "r");
+        if (jsonFile)
+        {
+            std::string cfg(std::istreambuf_iterator<char>(jsonFile.stream()), std::istreambuf_iterator<char>());
+            ret = json::parse5(Encoding::convertString(cfg));
+        }
+        else { return json::object({}); }
+#endif
     }
     catch (const std::exception& e)
     {
@@ -126,7 +138,7 @@ void Config::read(int argc, char* argv[])
 {
     auto optsJ = json::object({
         {"rgssVersion", 0}, {"debugMode", false}, {"displayFPS", false}, {"printFPS", false}, {"winResizable", true},
-            {"fullscreen", false}, {"fixedAspectRatio", true}, {"smoothScaling", 0}, {"bicubicSharpness", 100},
+            {"fullscreen", true}, {"fixedAspectRatio", true}, {"smoothScaling", 0}, {"bicubicSharpness", 100},
 #ifdef MKXPZ_SSL
             {"xbrzScalingFactor", 1.},
 #endif
@@ -211,11 +223,20 @@ void Config::read(int argc, char* argv[])
     SET_OPT(defScreenW, integer);
     SET_OPT(defScreenH, integer);
 
+// In Android NDK, C++ exceptions makes mkxp-z to exit
+// without any error infos, so we handling that in main.cpp
+#ifndef MKXPZ_BUILD_ANDROID
     // Take a break real quick and witch to set game folder and read the game's ini
     if (!gameFolder.empty() && !mkxp_fs::setCurrentDirectory(gameFolder.c_str()))
     {
         throw Exception(Exception::MKXPError, "Unable to switch into gameFolder %s", gameFolder.c_str());
     }
+#else
+    if (!gameFolder.empty() && mkxp_fs::directoryExists(gameFolder.c_str()))
+    {
+        mkxp_fs::setCurrentDirectory(gameFolder.c_str());
+    }
+#endif
 
     readGameINI();
 

@@ -45,6 +45,11 @@
 #include "system/system.h"
 #endif
 
+#ifdef MKXPZ_BUILD_ANDROID
+#include <SDL.h>
+#include <jni.h>
+#endif
+
 #include "al-util.h"
 #include "debugwriter.h"
 
@@ -80,6 +85,38 @@ static void initALCFunctions(ALCdevice* alcDev)
 }
 
 #define HAVE_ALC_DEVICE_PAUSE alc.DevicePause
+
+#ifdef MKXPZ_BUILD_ANDROID
+static void jniSetFPSVisibility(bool state)
+{
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = env->GetObjectClass(activity);
+
+    jmethodID mID = env->GetStaticMethodID(cls, "setFPSVisibility", "(Z)V");
+    SDL_assert(mID != 0);
+
+    env->CallStaticVoidMethod(cls, mID, state);
+
+    env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+}
+
+static void jniUpdateFPSText(int num)
+{
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = env->GetObjectClass(activity);
+
+    jmethodID mID = env->GetStaticMethodID(cls, "updateFPSText", "(I)V");
+    SDL_assert(mID != 0);
+
+    env->CallStaticVoidMethod(cls, mID, (jint)num);
+
+    env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+}
+#endif
 
 uint8_t EventThread::keyStates[];
 EventThread::ControllerState EventThread::controllerState;
@@ -158,7 +195,13 @@ void EventThread::process(RGSSThreadData& rtData)
 
     bool displayingFPS = rtData.config.displayFPS;
 
-    if (displayingFPS || rtData.config.printFPS) fps.sendUpdates.set();
+    if (displayingFPS || rtData.config.printFPS)
+    {
+        fps.sendUpdates.set();
+#ifdef MKXPZ_BUILD_ANDROID
+        jniSetFPSVisibility(true);
+#endif
+    }
 
     bool cursorInWindow = false;
     /* Will be updated eventually */
@@ -321,6 +364,7 @@ void EventThread::process(RGSSThreadData& rtData)
                 break;
             }
 
+#ifndef MKXPZ_BUILD_ANDROID
             if (event.key.keysym.scancode == SDL_SCANCODE_F1 && rtData.config.enableSettings)
             {
                 // Do not open settings menu until initializing shared state.
@@ -339,6 +383,7 @@ void EventThread::process(RGSSThreadData& rtData)
                 openSettingsWindow();
 #endif
             }
+#endif
 
             if (event.key.keysym.scancode == SDL_SCANCODE_F2)
             {
@@ -347,9 +392,15 @@ void EventThread::process(RGSSThreadData& rtData)
 
                     fps.sendUpdates.set();
                     displayingFPS = true;
+#ifdef MKXPZ_BUILD_ANDROID
+                    jniSetFPSVisibility(true);
+#endif
                 }
                 else
                 {
+#ifdef MKXPZ_BUILD_ANDROID
+                    jniSetFPSVisibility(false);
+#endif
                     displayingFPS = false;
 
                     if (!rtData.config.printFPS) fps.sendUpdates.clear();
@@ -538,6 +589,10 @@ void EventThread::process(RGSSThreadData& rtData)
                 if (!fps.sendUpdates) break;
 
                 snprintf(buffer, sizeof(buffer), "%s - %d FPS", rtData.config.windowTitle.c_str(), event.user.code);
+
+#ifdef MKXPZ_BUILD_ANDROID
+                jniUpdateFPSText(event.user.code);
+#endif
 
                 /* Updating the window title in fullscreen
                  * mode seems to cause flickering */

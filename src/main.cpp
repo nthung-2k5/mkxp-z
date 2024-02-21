@@ -63,6 +63,11 @@ extern "C"
 }
 #endif
 
+#ifdef __ANDROID__
+#include <jni.h>
+#include <sys/system_properties.h>
+#endif
+
 #ifdef MKXPZ_STEAM
 #include "steamshim_child.h"
 #endif
@@ -216,6 +221,16 @@ int main(int argc, char* argv[])
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
 
+    // Allow generate synthetic mouse events on touch
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+    // Disallow generate synthetic touch events on mouse
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+
+#ifdef MKXPZ_BUILD_ANDROID
+    // Set application window orientation to landscape
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
+
 #ifdef GLES2_HEADER
     SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
 #endif
@@ -233,6 +248,8 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    // Setup working directory
+    /*
 #ifndef WORKDIR_CURRENT
     char dataDir[512]{};
 #if defined(__linux__)
@@ -243,10 +260,65 @@ int main(int argc, char* argv[])
     if (!dataDir[0]) { strncpy(dataDir, mkxp_fs::getDefaultGameRoot().c_str(), sizeof(dataDir)); }
     mkxp_fs::setCurrentDirectory(dataDir);
 #endif
+    */
+#ifdef MKXPZ_BUILD_ANDROID
+    char sdkVersionChar[PROP_VALUE_MAX];
+    __system_property_get("ro.build.version.sdk", sdkVersionChar);
+    int sdkVersion = atoi(sdkVersionChar);
+
+    // Get GAME_PATH string field from JNI (MainActivity.java)
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = env->GetObjectClass(activity);
+    jfieldID fIDGamePath = env->GetStaticFieldID(cls, "GAME_PATH", "Ljava/lang/String;");
+    jstring strJGamePath = (jstring)env->GetStaticObjectField(cls, fIDGamePath);
+    const char* dataDir = env->GetStringUTFChars(strJGamePath, 0);
+
+    // Request storage permission (before Android 11)
+    if (sdkVersion < 30)
+    {
+        if (!SDL_AndroidRequestPermission("android.permission.WRITE_EXTERNAL_STORAGE"))
+        {
+            showInitError("Failed to get external storage. Please check the app permissions.");
+            SDL_Quit();
+            return 0;
+        }
+    }
+
+    // Set and ensure current directory
+    if (!mkxp_fs::directoryExists(dataDir))
+    {
+        char buf[200];
+        snprintf(buf, sizeof(buf), "Failed to set current directory to %s", dataDir);
+        showInitError(std::string(buf));
+        SDL_Quit();
+        return 0;
+    }
+    mkxp_fs::setCurrentDirectory(dataDir);
+
+    env->ReleaseStringUTFChars(strJGamePath, dataDir);
+    env->DeleteLocalRef(strJGamePath);
+    env->DeleteLocalRef(cls);
+#endif
 
     /* now we load the config */
     Config conf;
     conf.read(argc, argv);
+
+#ifdef MKXPZ_BUILD_ANDROID
+    // Ensure gameFolder directory from config file
+    if (!conf.gameFolder.empty())
+    {
+        if (!mkxp_fs::directoryExists(conf.gameFolder.c_str()))
+        {
+            char buf[200];
+            snprintf(buf, sizeof(buf), "Unable to switch into gameFolder to %s", conf.gameFolder.c_str());
+            showInitError(std::string(buf));
+            SDL_Quit();
+            return 0;
+        }
+    }
+#endif
 
 #if defined(__WIN32__)
     // Create a debug console in debug mode

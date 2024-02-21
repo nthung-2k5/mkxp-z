@@ -25,6 +25,9 @@
 #include "config.h"
 #include "debugwriter.h"
 #include "fluid-fun.h"
+#ifdef MKXP_BUILD_ANDROID
+#include "fluidstream.h"
+#endif
 
 #include <assert.h>
 #include <string>
@@ -78,6 +81,9 @@ struct SharedMidiState
         fluid.settings_setnum(flSettings, "synth.sample-rate", SYNTH_SAMPLERATE);
         fluid.settings_setint(flSettings, "synth.chorus.active", conf.midi.chorus);
         fluid.settings_setint(flSettings, "synth.reverb.active", conf.midi.reverb);
+#ifdef MKXP_BUILD_ANDROID
+        fluid.settings_setstr(flSettings, "audio.driver", "opensles");
+#endif
 
         for (size_t i = 0; i < SYNTH_INIT_COUNT; ++i)
             addSynth(false);
@@ -122,7 +128,16 @@ struct SharedMidiState
         fluid_synth_t* syn = fluid.new_synth(flSettings);
 
         if (!soundFont.empty())
+        {
+#ifdef MKXP_BUILD_ANDROID
+            fluid_sfloader_t* loader = fluid.new_defsfloader(flSettings);
+            fluid.sfloader_set_callbacks(loader, fluid_sf_open, fluid_sf_read, fluid_sf_seek, fluid_sf_tell,
+                                         fluid_sf_close);
+
+            fluid.synth_add_sfloader(syn, loader);
+#endif
             fluid.synth_sfload(syn, soundFont.c_str(), 1);
+        }
         else
             Debug() << "Warning: No soundfont specified, sound might be mute";
 
