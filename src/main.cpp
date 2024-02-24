@@ -200,7 +200,7 @@ static void setupWindowIcon(const Config& conf, SDL_Window* win)
 
     if (conf.iconPath.empty())
 #ifndef MKXPZ_BUILD_XCODE
-        iconSrc = SDL_RWFromConstMem(___assets_icon_png, ___assets_icon_png_len);
+        iconSrc = SDL_RWFromConstMem(assets_icon_png, assets_icon_png_len);
 #else
         iconSrc = SDL_RWFromFile(mkxp_fs::getPathForAsset("icon", "png").c_str(), "rb");
 #endif

@@ -75,8 +75,8 @@
 #else
 #define INIT_SHADER(vert, frag, name)                                                                                  \
     {                                                                                                                  \
-        Shader::init(___shader_##vert##_vert, ___shader_##vert##_vert_len, ___shader_##frag##_frag,                    \
-                     ___shader_##frag##_frag_len, #vert, #frag, #name);                                                \
+        Shader::init(shader_##vert##_vert, shader_##vert##_vert_len, shader_##frag##_frag, shader_##frag##_frag_len,   \
+                     #vert, #frag, #name);                                                                             \
     }
 #endif
 
@@ -162,8 +162,8 @@ static void setupShaderSource(GLuint shader, GLenum type, const unsigned char* b
     }
 
 #ifndef MKXPZ_BUILD_XCODE
-    shaderSrc[i] = (const GLchar*)___shader_common_h;
-    shaderSrcSize[i] = ___shader_common_h_len;
+    shaderSrc[i] = (const GLchar*)shader_common_h;
+    shaderSrcSize[i] = shader_common_h_len;
 #else
     shaderSrc[i] = (const GLchar*)Shader::commonHeader().c_str();
     shaderSrcSize[i] = Shader::commonHeader().length();
