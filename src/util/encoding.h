@@ -11,7 +11,7 @@
 #include <string.h>
 #include <string>
 
-#include "util/encoding.h"
+#include "exception.h"
 #include <errno.h>
 #include <iconv.h>
 #include <uchardet.h>
