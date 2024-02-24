@@ -59,7 +59,6 @@ typedef void (*DELETEFLUIDSYNTHPROC)(fluid_synth_t* synth);
     FLUID_FUN(synth_pitch_bend, FLUIDSYNTHPITCHBENDPROC)                                                               \
     FLUID_FUN(synth_cc, FLUIDSYNTHCCPROC)                                                                              \
     FLUID_FUN(synth_program_change, FLUIDSYNTHPROGRAMCHANGEPROC)                                                       \
-    FLUID_FUN(synth_program_change, FLUIDSYNTHPROGRAMCHANGEPROC)                                                       \
     FLUID_FUN(sfloader_set_callbacks, FLUIDSFLOADERSETCALLBACKS)
 
 /* Functions that don't fit into the default prefix naming scheme */
